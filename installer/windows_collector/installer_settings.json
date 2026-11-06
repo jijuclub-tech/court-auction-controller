@@ -1,0 +1,36 @@
+{
+  "_explain": "BIDGUARD 법원경매 수집기 윈도우 설치 프로그램의 설정. 설치 방법(ps1)은 그대로 두고 이 파일만 고치면 된다.",
+  "product_name": "BIDGUARD 법원경매 수집기",
+  "product_id": "BIDGUARD_Court_Auction_Collector",
+  "shortcut_name": "BIDGUARD Court Auction Collector",
+  "firmware_shortcut_name": "BIDGUARD Pico2 Firmware Update",
+  "uninstall_shortcut_name": "BIDGUARD Court Auction Collector Uninstall",
+  "publisher": "지주클럽",
+  "default_install_dir": "C:\\BIDGUARD\\Court_Auction_Collector",
+  "minimum_free_disk_mb": 2048,
+  "python": {
+    "version": "3.12.10",
+    "minor": "3.12",
+    "installer_file": "python-3.12.10-amd64.exe",
+    "_explain": "3.12 계열의 마지막 정식 설치 파일. tkinter(수집기 화면 부품)가 들어 있어야 해서 '내장형 소형판'이 아닌 정식 설치 파일을 쓴다."
+  },
+  "requirements_file": "collector_requirements.txt",
+  "preserve_in_app": [
+    "config.json",
+    "settings.json",
+    "credentials_local.json",
+    "work_policy.json",
+    "reports",
+    "data",
+    "map_submissions"
+  ],
+  "_preserve_explain": "새 판을 깔아도 지키는 것: 수집기 이름·관제기 주소·로그인 저장값·받은 정책·보고·수집 자료",
+  "self_check_imports": "import tkinter, requests, dotenv, serial, ui.app, core.appraisal, core.login, core.reporter",
+  "screen": {
+    "recommended_width": 1920,
+    "recommended_height": 1080,
+    "minimum_width": 1366,
+    "minimum_height": 768,
+    "_explain": "수집기가 여는 브라우저 기준. 크기는 '브라우저에 실제로 보이는 크기' = 실제 해상도 ÷ 윈도우 배율"
+  }
+}
