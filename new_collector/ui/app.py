@@ -47,7 +47,7 @@ class QueueHandler(logging.Handler):
 class CollectorUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Court Auction Collector")
+        self.root.title("그록 버전 수집기")
         self.root.geometry("860x560")
         self.root.minsize(720, 480)
 
