@@ -152,6 +152,7 @@ def collectors():
             "success": round(c.get("success_rate", 0) * 100, 1),
             "memo": c.get("memo", ""),
             "registered": (c.get("registered_at") or "")[:16].replace("T", " "),
+            "last_connected": (c.get("last_connected_at") or "")[:16].replace("T", " "),
             "busy": c.get("is_busy", False),
         })
     return render_template("collectors.html", collectors=items, active="collectors")
@@ -280,7 +281,8 @@ def instructions():
 @app.route("/reports")
 @login_required
 def reports():
-    return render_template("reports.html", active="reports")
+    return render_template("reports.html", reports=list(reversed(getattr(ctrl, "collector_reports", []))),
+                           active="reports")
 
 
 @app.route("/api/collector/connect", methods=["POST"])
@@ -291,6 +293,20 @@ def api_connect():
     if not name:
         return jsonify({"ok": False, "error": "name required"}), 400
     result = ctrl.on_collector_connect(name, site)
+    return jsonify({"ok": True, "result": result})
+
+
+@app.route("/api/collector/report", methods=["POST"])
+def api_report():
+    """수집기 → 관제기 결과 보고 (사건 1건 단위)"""
+    data = request.get_json(force=True, silent=True) or {}
+    name = str(data.get("name", "")).strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    try:
+        result = ctrl.receive_collector_report(name, data)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": f"invalid report: {e}"}), 400
     return jsonify({"ok": True, "result": result})
 
 

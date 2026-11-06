@@ -41,6 +41,7 @@ class TaskType(str, Enum):
     STATUS = "현황조사서"
     APPRAISAL = "감정평가서"
     MONITOR = "기일모니터링"
+    REGISTRY = "등기부등본"  # 업무지시 화면에 있던 선택지. 없어서 감정평가서로 바뀌던 문제 수정
 
 
 class TaskStatus(str, Enum):
@@ -143,6 +144,7 @@ class AuctionController:
         self.last_plan_time: Optional[datetime] = None
         self.pending_instructions: List[WorkInstruction] = []
         self.natural_tasks: List[dict] = []
+        self.collector_reports: List[dict] = []  # 수집기가 HTTP로 보낸 결과 보고 (최근 것부터 화면 표시)
         # 수집기·자연어 작업·대기 지시서를 재시작 후에도 유지하는 상태 파일 (DB 옆)
         self.state_path = self.db_path.with_name("controller_state.json")
         self.policy: dict = {}
@@ -442,13 +444,64 @@ class AuctionController:
         logger.info(f"[{collector_name}] 접속. 수집 대상 사이트: {target_site}")
         self._log_collector_event(collector_name, "connect", {"site": target_site})
         map_content = self.get_map_for_site(target_site)
+        registered = collector_name in self.collectors
+        if registered:
+            self.collectors[collector_name]["last_connected_at"] = datetime.now().isoformat()
+            self._save_state()
+        else:
+            logger.warning(f"[{collector_name}] 관제기에 등록되지 않은 수집기 이름으로 접속")
+        pending = sum(1 for i in self.pending_instructions if i.collector_name == collector_name)
         return {
             "collector": collector_name,
             "site": target_site,
             "map": map_content,
             "map_available": map_content is not None,
+            "registered": registered,
+            "pending_instructions": pending,
             "message": "맵 전송 완료" if map_content else "해당 사이트 맵 없음. 기본 규칙 적용",
         }
+
+    def receive_collector_report(self, collector_name: str, report: dict) -> dict:
+        """
+        수집기가 HTTP로 보낸 사건 1건의 결과를 받아 작업 상태를 갱신
+        - 같은 사건·같은 작업 유형의 끝나지 않은 작업이 있으면 그 작업을 갱신, 없으면 새로 만들고 갱신
+        - 기존 report_result()를 그대로 사용 (재시도·실패 판정, 사건 완료 표시, 수집기 성능 갱신)
+        """
+        case_no = str(report.get("case_no") or "").strip()
+        if not case_no:
+            raise ValueError("case_no required")
+        task_type = TaskType(str(report.get("task_type") or "").strip())
+        success = bool(report.get("success"))
+        error = str(report.get("error") or "")[:500]
+
+        self.ensure_case(case_no, str(report.get("court") or "미지정"))
+        task = next((t for t in self.tasks.values()
+                     if t.case_no == case_no and t.task_type == task_type
+                     and t.status not in (TaskStatus.SUCCESS, TaskStatus.FAILED)), None)
+        if task is None:
+            task = self.create_task(case_no, task_type)
+        task.assigned_to = collector_name
+        task.started_at = task.started_at or report.get("started_at") or datetime.now().isoformat()
+        self.report_result(task.id, success, error, report)
+
+        record = {
+            "received_at": datetime.now().isoformat(),
+            "collector": collector_name,
+            "instruction_id": str(report.get("instruction_id") or "")[:40],
+            "case_no": case_no,
+            "task_type": task_type.value,
+            "success": success,
+            "needs_human": bool(report.get("needs_human")),
+            "error": error,
+            "file_path": str(report.get("file_path") or "")[:300],
+            "task_id": task.id,
+            "task_status": task.status.value,
+        }
+        self.collector_reports.append(record)
+        del self.collector_reports[:-300]  # 최근 300건만 보관
+        self._save_state()
+        logger.info(f"[{collector_name}] 결과 보고 수신: {case_no} / {task_type.value} / success={success} → {task.status.value}")
+        return {"task_id": task.id, "task_status": task.status.value}
 
     def receive_map_submission(self, collector_name: str, site: str, materials: dict) -> dict:
         """
@@ -779,6 +832,7 @@ class AuctionController:
             "collectors": self.collectors,
             "natural_tasks": self.natural_tasks,
             "pending_instructions": [asdict(i) for i in self.pending_instructions],
+            "collector_reports": self.collector_reports,
         }
         try:
             tmp = self.state_path.with_name(self.state_path.name + ".tmp")
@@ -796,6 +850,7 @@ class AuctionController:
                 for c in self.collectors.values():
                     c["is_busy"] = False  # 꺼지기 전 작업 중이던 표시는 해제
                 self.natural_tasks = list(data.get("natural_tasks") or [])
+                self.collector_reports = list(data.get("collector_reports") or [])
                 fields = set(WorkInstruction.__dataclass_fields__)
                 self.pending_instructions = [
                     WorkInstruction(**{k: v for k, v in d.items() if k in fields})

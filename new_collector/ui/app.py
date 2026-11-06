@@ -13,16 +13,23 @@ import requests
 import logging
 import queue
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import scrolledtext, messagebox, ttk
 
 from core.appraisal import AppraisalDownloader
+from core.reporter import ControllerReporter
 from core.login import ControlTypeLogin, save_local_credentials, load_local_credentials
 from core.access_policy import is_public_institution, should_suppress_option, save_choice
 
 CONFIG_PATH = Path("config.json")
 SETTINGS_PATH = Path("settings.json")
+
+# 관제기 작업 유형 이름 ↔ 수집기 내부 작업 이름
+TASK_FROM_CONTROLLER = {"감정평가서": "appraisal", "등기부등본": "registry"}
+TASK_TO_CONTROLLER = {v: k for k, v in TASK_FROM_CONTROLLER.items()}
+DEFAULT_POLL_SECONDS = 15  # 관제형이 지시서를 확인하는 간격
 
 
 class QueueHandler(logging.Handler):
@@ -52,6 +59,7 @@ class CollectorUI:
         self.worker = None
         self.log_queue = queue.Queue()
         self.needs_human = False
+        self.ctrl_connected = False
 
         self._setup_logging()
         self._build_ui()
@@ -123,7 +131,8 @@ class CollectorUI:
         self.stop_btn = tk.Button(btns, text="Stop", width=12, command=self.stop, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT)
 
-        tk.Label(f, text="Site: courtauction.go.kr", fg="#444").pack(anchor="w", pady=(16, 0))
+        tk.Label(f, textvariable=self.ctrl_var, fg="#444").pack(anchor="w", pady=(16, 0))
+        tk.Label(f, text="Site: courtauction.go.kr", fg="#444").pack(anchor="w")
         self.input_var = tk.StringVar(value="Input: Pico2 (HID)")
         tk.Label(f, textvariable=self.input_var, fg="#444").pack(anchor="w")
 
@@ -181,7 +190,9 @@ class CollectorUI:
 
         if self.ctype == "control":
             tk.Label(f, text="관제형 수집기는 관제기의 지시를 수행합니다.", font=("Segoe UI", 11), fg="#444", wraplength=400).pack(anchor="w", pady=20)
-            tk.Button(f, text="Start collection", command=self.start).pack(anchor="w", pady=8)
+            self.instr_var = tk.StringVar(value="")
+            tk.Label(f, textvariable=self.instr_var, font=("Segoe UI", 10), fg="#1d4ed8", wraplength=600, justify="left").pack(anchor="w")
+            self._update_instruction_state()
         else:
             tk.Label(f, text="수집할 내용 입력하세요", font=("Segoe UI", 11, "bold")).pack(anchor="w")
             self.case_box = scrolledtext.ScrolledText(f, height=8, font=("Consolas", 10))
@@ -264,26 +275,76 @@ class CollectorUI:
         self.ctrl_var.set(f"Controller: {url or 'not connected'}")
 
     def connect_controller(self):
-        url = self.settings.get("controller_url") or self.ctrl_entry.get().strip()
+        # 입력칸에 적은 주소를 우선 사용하고 저장 (저장 버튼을 따로 누르지 않아도 됨)
+        url = self.ctrl_entry.get().strip() or self.settings.get("controller_url") or ""
         if not url:
             self.settings_msg.set("Enter controller address first.")
             return
+        if "://" not in url:
+            url = "http://" + url
         url = url.rstrip("/")
+        self.ctrl_entry.delete(0, tk.END)
+        self.ctrl_entry.insert(0, url)
+        self.settings["controller_url"] = url
+        self._save_settings()
+        self.settings_msg.set("Connecting...")
+        # 네트워크 대기 동안 화면이 멈추지 않도록 별도 스레드에서 연결
+        threading.Thread(target=self._connect_worker, args=(url,), daemon=True).start()
+
+    def _connect_worker(self, url: str):
         try:
             r = requests.post(
                 f"{url}/api/collector/connect",
                 json={"name": self.name, "site": "courtauction.go.kr", "type": self.ctype},
                 timeout=10,
             )
-            if r.status_code == 200:
-                self.ctrl_var.set(f"Controller: connected ({url})")
-                self.settings_msg.set("Connected.")
-                self._fetch_instruction()
-                self._fetch_policy()
-            else:
-                self.settings_msg.set(f"Connect failed: {r.status_code}")
+            if r.status_code != 200:
+                err = f"Connect failed: {r.status_code}"
+                self.root.after(0, lambda: self._on_connect_result(False, err))
+                return
+            result = (r.json() or {}).get("result", {})
+            self.root.after(0, lambda: self._on_connect_result(True, "", result))
         except Exception as e:
-            self.settings_msg.set(f"Connect error: {e}")
+            err = f"Connect error: {e}"
+            self.root.after(0, lambda: self._on_connect_result(False, err))
+
+    def _on_connect_result(self, ok: bool, msg: str, result: dict = None):
+        if not ok:
+            self.ctrl_connected = False
+            self.ctrl_var.set("Controller: not connected")
+            self.settings_msg.set(msg)
+            self._update_instruction_state()
+            return
+        result = result or {}
+        self.ctrl_var.set("Controller: connected")
+        note = "Connected."
+        if result.get("registered") is False:
+            note += f"  주의: 관제기에 '{self.name}' 이름이 등록되어 있지 않습니다. 관제기 수집기 메뉴에서 등록하세요."
+        if self.ctype == "control":
+            note += f"  대기 지시서 {result.get('pending_instructions', 0)}건"
+        self.settings_msg.set(note)
+        self.ctrl_connected = True
+        logging.getLogger("Main").info(f"관제기 연결: {self.settings.get('controller_url')} / {note}")
+        self._update_instruction_state()
+        url = self.settings.get("controller_url", "")
+        threading.Thread(target=lambda: ControllerReporter(self.name).flush_unsent(url), daemon=True).start()
+        if self.ctype != "control":
+            # 보급형: 기존대로 연결 때 지시서 확인. 관제형은 Start 후 지시 대기 루프에서 받아 수행
+            self._fetch_instruction()
+        self._fetch_policy()
+
+    def _update_instruction_state(self, text: str = ""):
+        """관제형 Collect 탭의 지시 상태 문구"""
+        if self.ctype != "control" or not hasattr(self, "instr_var"):
+            return
+        if text:
+            self.instr_var.set(text)
+        elif not self.ctrl_connected:
+            self.instr_var.set("관제기 미연결 — Settings 탭에서 관제기 주소를 넣고 연결하세요.")
+        elif not self.running:
+            self.instr_var.set("관제기 연결됨 — Status 탭의 Start를 누르면 지시를 기다립니다.")
+        else:
+            self.instr_var.set("관제기 지시 대기 중")
 
     def _fetch_policy(self):
         url = (self.settings.get("controller_url") or "").rstrip("/")
@@ -342,66 +403,6 @@ class CollectorUI:
                 self.status_var.set("Logged in")
         except Exception as e:
             self.login_result.set(f"Error: {e}")
-
-    def _check_display_scale(self) -> float:
-        """Windows 디스플레이 배율 확인 (100% = 1.0)"""
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            user32.SetProcessDPIAware()
-            dpi = user32.GetDpiForSystem() if hasattr(user32, "GetDpiForSystem") else 96
-            return dpi / 96.0
-        except Exception:
-            return 1.0
-
-    def _ask_scale_action(self, scale: float) -> str:
-        """배율 경고: 변경 / 무시 선택. 반환값: 'change' 또는 'ignore'"""
-        dlg = tk.Toplevel(self.root)
-        dlg.title("화면 배율 확인")
-        dlg.geometry("440x220")
-        dlg.transient(self.root)
-        dlg.grab_set()
-        dlg.resizable(False, False)
-
-        result = {"action": "ignore"}
-
-        msg = (
-            f"현재 Windows 디스플레이 배율: {int(scale * 100)}%\n\n"
-            "피코2 클릭이 정확하려면 배율을 100%로 맞춰 주세요.\n"
-            "브라우저 확대율(Ctrl+0)과 별개입니다."
-        )
-        tk.Label(dlg, text=msg, justify="left", wraplength=400).pack(padx=16, pady=(16, 8))
-
-        # 설정 링크
-        link = tk.Label(dlg, text="Windows 디스플레이 설정 열기", fg="#1d4ed8", cursor="hand2")
-        link.pack(pady=(0, 12))
-        link.bind("<Button-1>", lambda e: self._open_display_settings())
-
-        btn_frame = tk.Frame(dlg)
-        btn_frame.pack(pady=8)
-
-        def on_change():
-            result["action"] = "change"
-            self._open_display_settings()
-            dlg.destroy()
-
-        def on_ignore():
-            result["action"] = "ignore"
-            dlg.destroy()
-
-        tk.Button(btn_frame, text="변경", width=10, command=on_change).pack(side=tk.LEFT, padx=8)
-        tk.Button(btn_frame, text="무시", width=10, command=on_ignore).pack(side=tk.LEFT, padx=8)
-
-        dlg.wait_window()
-        return result["action"]
-
-    def _open_display_settings(self):
-        """Windows 디스플레이 설정 열기"""
-        try:
-            import subprocess
-            subprocess.Popen(["cmd", "/c", "start", "ms-settings:display"])
-        except Exception:
-            pass
 
     def _show_startup_options(self):
         """시작 시 옵션 메뉴 다이얼로그"""
@@ -524,6 +525,7 @@ class CollectorUI:
         self.human_var.set("")
         self.worker = threading.Thread(target=self._run_job, daemon=True)
         self.worker.start()
+        self._update_instruction_state()
 
     def stop(self):
         self.running = False
@@ -547,11 +549,10 @@ class CollectorUI:
                 return
 
             downloader = AppraisalDownloader(self.name)
-            cases = getattr(self, "pending_cases", None) or []
-            if self.ctype == "control" and not cases:
-                logger.info("관제형: 관제기 지시 대기")
-                self.root.after(0, lambda: self.task_var.set("관제기 지시 대기"))
+            if self.ctype == "control":
+                self._instruction_loop(downloader)
                 return
+            cases = getattr(self, "pending_cases", None) or []
             task = getattr(self, "pending_task", "appraisal")
             for case_no in cases:
                 if not self.running:
@@ -564,6 +565,7 @@ class CollectorUI:
                     logger.info("Registry: security code step (AI or human)")
                     result = {"case_no": case_no, "success": True, "task": "registry"}
 
+                self._send_report(case_no, task, result)
                 if result.get("needs_human"):
                     self.needs_human = True
                     self.root.after(0, lambda: self.human_var.set("User action required"))
@@ -580,11 +582,125 @@ class CollectorUI:
             self.running = False
             self.root.after(0, self._on_job_done)
 
+    # ── 관제형: 관제기 지시 수신·수행 ─────────────────────────────
+    def _instruction_loop(self, downloader):
+        """Start 이후 Stop을 누를 때까지 관제기 지시서를 확인하고, 오면 그대로 수행"""
+        logger = logging.getLogger("Main")
+        url = (self.settings.get("controller_url") or "").rstrip("/")
+        if not url:
+            logger.warning("관제기 주소 없음 → Settings 탭에서 관제기 주소를 넣고 연결하세요")
+            self.root.after(0, lambda: self._update_instruction_state("관제기 미연결 — Settings 탭에서 연결 후 다시 Start 하세요."))
+            return
+        poll = max(5, int(self.settings.get("instruction_poll_seconds", DEFAULT_POLL_SECONDS) or DEFAULT_POLL_SECONDS))
+        reporter = ControllerReporter(self.name)
+        logger.info(f"관제형: 관제기 지시 대기 시작 (확인 간격 {poll}초)")
+        self.root.after(0, lambda: self.task_var.set("관제기 지시 대기"))
+        while self.running:
+            reporter.flush_unsent(url)
+            inst = self._get_instruction(url)
+            if inst:
+                self._execute_instruction(inst, downloader, url)
+                continue  # 다음 지시가 이미 있으면 바로 이어서
+            stamp = time.strftime("%H:%M:%S")
+            self.root.after(0, lambda st=stamp: self._update_instruction_state(f"관제기 지시 대기 중 (마지막 확인 {st})"))
+            for _ in range(poll * 2):  # Stop에 0.5초 안에 반응하도록 잘게 나눠 대기
+                if not self.running:
+                    break
+                time.sleep(0.5)
+        self.root.after(0, lambda: self._update_instruction_state())
+
+    def _get_instruction(self, url: str):
+        logger = logging.getLogger("Main")
+        try:
+            r = requests.get(f"{url}/api/collector/instruction/{self.name}", timeout=10)
+            if r.status_code != 200:
+                logger.warning(f"지시서 확인 실패: HTTP {r.status_code}")
+                self.root.after(0, lambda: self.ctrl_var.set("Controller: not connected"))
+                return None
+            self.root.after(0, lambda: self.ctrl_var.set("Controller: connected"))
+            self.ctrl_connected = True
+            inst = (r.json() or {}).get("instruction")
+            return inst if isinstance(inst, dict) else None
+        except Exception as e:
+            logger.warning(f"지시서 확인 연결 실패: {e}")
+            self.root.after(0, lambda: self.ctrl_var.set("Controller: not connected"))
+            return None
+
+    def _execute_instruction(self, inst: dict, downloader, url: str):
+        """지시서의 사건번호·작업 유형·저장 경로·대기 시간을 그대로 사용해 수행하고 건별로 보고"""
+        logger = logging.getLogger("Main")
+        inst_id = str(inst.get("instruction_id", ""))
+        cases = [str(c).strip() for c in (inst.get("cases") or []) if str(c).strip()]
+        ctrl_task = str(inst.get("task_type", ""))
+        task = TASK_FROM_CONTROLLER.get(ctrl_task)
+        wait = int(inst.get("must_wait_seconds") or 5)
+        save_path = self._usable_save_path(inst.get("save_path"))
+        logger.info(f"지시서 수령: {inst_id[:8]} / {ctrl_task} / {len(cases)}건 / 저장 {save_path or '기본 경로'} / 대기 {wait}초")
+        steps = inst.get("menu_steps") or []
+        if steps:
+            logger.info("지시 단계: " + " → ".join(steps))
+
+        for idx, case_no in enumerate(cases):
+            if not self.running:
+                self._report_skipped(cases[idx:], ctrl_task, inst_id, "사용자 중지로 수행하지 못함")
+                return
+            label = f"[{idx + 1}/{len(cases)}] {ctrl_task}: {case_no}"
+            self.root.after(0, lambda t=label: (self.task_var.set(t), self._update_instruction_state(f"지시 수행 중 {t}")))
+            if task == "appraisal":
+                result = downloader.download_appraisal(case_no, must_wait=wait, save_path=save_path)
+            elif task == "registry":
+                logger.info("Registry: security code step (AI or human)")
+                result = {"case_no": case_no, "success": True, "task": "registry"}
+            else:
+                result = {"case_no": case_no, "success": False,
+                          "error": f"이 수집기에서 아직 지원하지 않는 작업 유형: {ctrl_task or '없음'}"}
+                logger.warning(result["error"])
+            self._send_report(case_no, task or "", result, ctrl_task=ctrl_task, instruction_id=inst_id)
+            logger.info(f"Result: {json.dumps(result, ensure_ascii=False)}")
+            if result.get("needs_human"):
+                self.needs_human = True
+                self.running = False  # 사람 확인 전까지 다음 지시를 받지 않음
+                self.root.after(0, lambda: self.human_var.set("User action required"))
+                logger.warning("Needs human → 지시 수행 일시 정지")
+                self._report_skipped(cases[idx + 1:], ctrl_task, inst_id, "사람 확인 대기로 수행하지 못함")
+                return
+        self.root.after(0, self._refresh_reports)
+        logger.info(f"지시서 완료: {inst_id[:8]}")
+
+    def _usable_save_path(self, path):
+        """관제기가 정한 저장 경로를 사용. 이 컴퓨터에서 만들 수 없으면 기본 경로(data/downloads)"""
+        if not path:
+            return None
+        try:
+            Path(path).mkdir(parents=True, exist_ok=True)
+            return str(path)
+        except Exception as e:
+            logging.getLogger("Main").warning(f"지시서 저장 경로 사용 불가({path}): {e} → 기본 경로 사용")
+            return None
+
+    def _report_skipped(self, cases, ctrl_task, inst_id, reason):
+        for c in cases:
+            self._send_report(c, "", {"case_no": c, "success": False, "error": reason},
+                              ctrl_task=ctrl_task, instruction_id=inst_id)
+
+    def _send_report(self, case_no, task, result, ctrl_task: str = "", instruction_id: str = ""):
+        """관제기 주소가 있으면 결과를 관제기에 보고 (실패 시 보관 후 재전송)"""
+        url = (self.settings.get("controller_url") or "").rstrip("/")
+        if not url:
+            return
+        ControllerReporter(self.name).send_to_controller(
+            url, case_no, ctrl_task or TASK_TO_CONTROLLER.get(task, task),
+            bool(result.get("success")), file_path=result.get("file"), error=result.get("error", ""),
+            instruction_id=instruction_id, needs_human=bool(result.get("needs_human")),
+            extra={"duration": result.get("duration")},
+        )
+
     def _on_job_done(self):
         self.status_var.set("Idle")
         self.task_var.set("-")
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
+        self._update_instruction_state()
 
 
 def main():
