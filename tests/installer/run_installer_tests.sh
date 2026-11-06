@@ -13,9 +13,11 @@ python3 -c "import sys; sys.path.insert(0,'$HERE'); from uf2_test_files import m
 printf 'MZ test placeholder' > "$WORK/python-3.12.10-amd64.exe"
 run "피코2 펌웨어 업데이트기" python3 "$HERE/test_pico2_firmware_updater.py"
 run "묶음 제작기" python3 "$HERE/test_build_release_bundles.py" "$WORK/python-3.12.10-amd64.exe" "$WORK/windows_wheels" "$WORK/linux_wheels"
-python3 "$REPO/installer/build/build_release_bundles.py" --out "$WORK/out" --python-installer "$WORK/python-3.12.10-amd64.exe" \
-  --windows-wheels "$WORK/windows_wheels" --linux-wheels "$WORK/linux_wheels" --firmware-uf2 "$WORK/fw.uf2" >/dev/null
-run "우분투 관제기 설치기" python3 "$HERE/test_ubuntu_controller_installer.py" "$WORK"/out/Court-Auction-Controller-Ubuntu-Setup-*.zip
+if [ -f "$REPO/controller/web_ui.py" ]; then   # 관제기가 있는 저장소에서만
+  python3 "$REPO/installer/build/build_release_bundles.py" --out "$WORK/out" --python-installer "$WORK/python-3.12.10-amd64.exe" \
+    --windows-wheels "$WORK/windows_wheels" --linux-wheels "$WORK/linux_wheels" --firmware-uf2 "$WORK/fw.uf2" >/dev/null
+  run "우분투 관제기 설치기" python3 "$HERE/test_ubuntu_controller_installer.py" "$WORK"/out/Court-Auction-Controller-Ubuntu-Setup-*.zip
+fi
 run "윈도우 설치 마법사 (짝 검사만)" python3 "$HERE/check_powershell_balance.py" "$REPO"/installer/windows_collector/*.ps1
 grep -q "SOME FAILED\|^FAIL\|Traceback" "$WORK/result.txt" && FAIL=1
 echo; echo "통과 $(grep -c '^PASS' "$WORK/result.txt")개 / 실패 $(grep -c '^FAIL' "$WORK/result.txt")개   (시험 폴더 $WORK)"

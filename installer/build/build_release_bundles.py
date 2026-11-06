@@ -39,6 +39,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 INSTALLER = REPO / "installer"
 SETTINGS = json.loads((INSTALLER / "build" / "build_settings.json").read_text(encoding="utf-8"))
+# 수집기 소스 자리: 관제기 저장소는 new_collector/, 수집기 저장소는 저장소 맨 위
+COLLECTOR_SRC = REPO / "new_collector" if (REPO / "new_collector" / "ui" / "app.py").exists() else REPO
+HAS_CONTROLLER = (REPO / "controller" / "web_ui.py").exists()
+REPO_ONLY_DIRS = ["installer", "tests", "RELEASE-STAGE", "RELEASE-CACHE", ".git", ".github"]
 sys.path.insert(0, str(INSTALLER / "windows_firmware"))
 import pico2_firmware_updater as fw  # UF2 검사를 같은 코드로 함
 
@@ -200,7 +204,14 @@ def main(argv=None):
     out_dir = Path(a.out); stage_dir = out_dir / "stage"
     cache = Path(a.cache)
     commit = git_commit(); built = datetime.now().isoformat(timespec="seconds")
-    want = {"windows", "firmware", "ubuntu"} if a.only == "all" else {a.only}
+    if a.only == "all":
+        want = {"windows", "firmware", "ubuntu"} if HAS_CONTROLLER else {"windows", "firmware"}
+    else:
+        want = {a.only}
+    if "ubuntu" in want and not HAS_CONTROLLER:
+        say("✖ 이 저장소에는 관제기(controller/)가 없어 우분투 묶음을 만들 수 없습니다."); return 1
+    if "windows" in want and not (COLLECTOR_SRC / "ui" / "app.py").exists():
+        say("✖ 수집기 소스(ui/app.py)를 찾지 못했습니다."); return 1
     made = []
     try:
         with tempfile.TemporaryDirectory() as work:
@@ -274,7 +285,7 @@ def main(argv=None):
                 shutil.copy2(py_exe, pre / py_exe.name)
                 shutil.copy2(win_req, pre / win_req.name)
                 copy_tree(win_wheels, pre / "wheels")
-                copy_tree(REPO / "new_collector", root / "payload" / "collector", SETTINGS["exclude_from_collector_payload"])
+                copy_tree(COLLECTOR_SRC, root / "payload" / "collector", SETTINGS["exclude_from_collector_payload"] + REPO_ONLY_DIRS)
                 (root / "payload" / "firmware_updater").mkdir(parents=True)
                 shutil.copy2(INSTALLER / "windows_firmware" / "pico2_firmware_updater.py", root / "payload" / "firmware_updater")
                 firmware_payload(root / "payload" / "firmware")

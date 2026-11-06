@@ -18,9 +18,10 @@ def build(out, *extra, py=PY, ww=WW, lw=LW, uf2=None):
 w = Path(tempfile.mkdtemp())
 good = w / "fw.uf2"; good.write_bytes(make_uf2([0xE48BFF57, 0xE48BFF59], 8))
 
+HAS_CONTROLLER = (REPO / "controller" / "web_ui.py").exists()   # 관제기 저장소=3종, 수집기 저장소=윈도우 2종
 r = build(w / "out1", uf2=good)
 zips = sorted((w / "out1").glob("*.zip"))
-check("묶음 3개 생성", r.returncode == 0 and len(zips) == 3, r.stdout[-300:])
+check(f"묶음 {3 if HAS_CONTROLLER else 2}개 생성", r.returncode == 0 and len(zips) == (3 if HAS_CONTROLLER else 2), r.stdout[-300:])
 for z in zips:
     names = zipfile.ZipFile(z).namelist(); root = z.stem
     m = json.loads(zipfile.ZipFile(z).read(f"{root}/BUILD-MANIFEST.json"))
@@ -33,6 +34,7 @@ for z in zips:
 wz = [z for z in zips if "Collector-Windows" in z.name][0]
 names = zipfile.ZipFile(wz).namelist()
 check("윈도우 묶음: human_input·captcha·펌웨어·업데이트기 포함", all(any(n.endswith(x) for n in names) for x in ("core/human_input.py", "core/captcha.py", "firmware_version.json", "pico2_firmware_updater.py")))
+check("윈도우 묶음: 저장소 관리 폴더(installer·tests)는 수집기 안에 안 들어감", not [n for n in names if "/payload/collector/installer/" in n or "/payload/collector/tests/" in n])
 fwinfo = json.loads(zipfile.ZipFile(wz).read(f"{wz.stem}/payload/firmware/firmware_version.json"))
 check("펌웨어 판·지문 기록", fwinfo["version"] == "S-0.2.5" and len(fwinfo["sha256"]) == 64)
 
@@ -47,9 +49,13 @@ ww2 = w / "ww2"; shutil.copytree(WW, ww2); [p.unlink() for p in ww2.glob("pyseri
 r = build(w / "out3", ww=str(ww2), uf2=good)
 check("윈도우 부품이 빠지면 묶음을 안 만듦", r.returncode == 1 and "부품이 모자랍니다" in r.stdout)
 
-lw2 = w / "lw2"; shutil.copytree(LW, lw2); [p.unlink() for p in lw2.glob("cryptography*")]
-r = build(w / "out4", "--only", "ubuntu", lw=str(lw2), uf2=good)
-check("우분투 부품이 빠지면 묶음을 안 만듦", r.returncode == 1 and "맞지 않습니다" in r.stdout)
+if HAS_CONTROLLER:
+    lw2 = w / "lw2"; shutil.copytree(LW, lw2); [p.unlink() for p in lw2.glob("cryptography*")]
+    r = build(w / "out4", "--only", "ubuntu", lw=str(lw2), uf2=good)
+    check("우분투 부품이 빠지면 묶음을 안 만듦", r.returncode == 1 and "맞지 않습니다" in r.stdout)
+else:
+    r = build(w / "out4", "--only", "ubuntu", uf2=good)
+    check("관제기가 없는 저장소에서 우분투 묶음을 요청하면 안내", r.returncode == 1 and "관제기" in r.stdout)
 
 wrong = w / "python-3.11.9-amd64.exe"; wrong.write_bytes(b"MZ")
 r = build(w / "out5", "--only", "windows", py=str(wrong), uf2=good)
