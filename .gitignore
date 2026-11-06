@@ -1,0 +1,4 @@
+# 설치 묶음 제작 결과·받은 준비물 (GitHub에 올리지 않음)
+RELEASE-STAGE/
+RELEASE-CACHE/
+__pycache__/

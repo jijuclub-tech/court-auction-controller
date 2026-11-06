@@ -1,0 +1,40 @@
+{
+  "_explain": "설치 묶음 제작 설정. 판을 올릴 때는 installer_version 만 바꾼다 (규칙: 단계-0.0.0, S=작업 T=시험 A=정식 s=임시).",
+  "installer_version": "S-0.1.0",
+  "firmware_version": "S-0.2.5",
+  "firmware_fqbn": "rp2040:rp2040:rpipico2",
+  "firmware_sketch": "bidguard-hid-pico2/bidguard-hid-pico2.ino",
+  "firmware_repository": "jijuclub-tech/BIDGUARD-PICO2-FIRMWARE-PRIVATE",
+  "windows_python": {
+    "version": "3.12.10",
+    "minor": "3.12",
+    "file": "python-3.12.10-amd64.exe",
+    "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe",
+    "sha256": "",
+    "_sha256_explain": "처음 받을 때 python.org 에서 확인한 값을 적어 두면 다음부터는 다르면 멈춘다. 비어 있으면 받은 값을 묶음 version.json 에 기록만 한다."
+  },
+  "linux_python_versions": ["3.10", "3.11", "3.12", "3.13"],
+  "linux_platforms": ["manylinux_2_34_x86_64", "manylinux_2_28_x86_64", "manylinux_2_17_x86_64", "manylinux2014_x86_64"],
+  "bundles": {
+    "windows_collector": {
+      "archive_root": "Court-Auction-Collector-Windows-Setup-{version}",
+      "entrypoint": "Install_Court_Auction_Collector.bat",
+      "target_path": "C:\\BIDGUARD\\Court_Auction_Collector",
+      "platform": "windows-10-x64"
+    },
+    "windows_firmware": {
+      "archive_root": "Pico2-Firmware-Update-Windows-{firmware_version}",
+      "entrypoint": "Update_Pico2_Firmware.bat",
+      "target_path": "(installed collector)\\tools",
+      "platform": "windows-10-x64"
+    },
+    "ubuntu_controller": {
+      "archive_root": "Court-Auction-Controller-Ubuntu-Setup-{version}",
+      "entrypoint": "install_court_auction_controller.sh",
+      "target_path": "/opt/bidguard/controller",
+      "platform": "ubuntu-22.04+"
+    }
+  },
+  "exclude_from_collector_payload": ["install.bat", "run.bat", "create_shortcut.py", ".gitignore", "__pycache__", "venv", "config.json", "settings.json", "credentials_local.json", "work_policy.json", "reports", "data"],
+  "exclude_from_controller_payload": ["install.sh", "uninstall.sh", "bidguard-controller.service", ".gitignore", "__pycache__", "venv", "controller.db", "controller_state.json", "credentials.json", "credentials.enc", "apikeys.enc", ".apikey_secret", "logs", "map_submissions", "reports"]
+}

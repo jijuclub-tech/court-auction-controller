@@ -1,0 +1,4 @@
+# 수집기 + 피코2 펌웨어 업데이트기 부품 (설치 때 묶음 안의 wheels 에서만 설치, 인터넷 안 씀)
+requests>=2.31.0
+python-dotenv>=1.0.0
+pyserial>=3.5
