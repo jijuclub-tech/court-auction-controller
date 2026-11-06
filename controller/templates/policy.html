@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Work Policy{% endblock %}
+{% block content %}
+<h1>Work Policy (기본 업무)</h1>
+<p class="lead">대법원 경매 정보 최신 수집 기본값입니다. 수정 후 저장하면 수집기가 다음 접속 때 반영합니다. 형식이 틀리면 저장하지 않고 입력한 내용을 그대로 남겨 둡니다.</p>
+<div class="card">
+  <form method="post">
+    <div class="field wide"><label for="p-json">정책 (JSON)</label>
+      <textarea id="p-json" name="policy_json" class="mono" style="height:440px">{{ policy_json }}</textarea></div>
+    <button class="btn" type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

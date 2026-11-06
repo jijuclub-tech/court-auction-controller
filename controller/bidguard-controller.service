@@ -1,0 +1,16 @@
+[Unit]
+Description=Bidguard Court Auction Controller UI
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/bidguard/controller
+ExecStart=/opt/bidguard/controller/venv/bin/python web_ui.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
