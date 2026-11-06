@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"><title>{{ t.api_keys }}</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f8fafc}
+.card{background:white;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0}
+input{padding:6px;width:320px;margin:4px 0}
+button{padding:6px 16px}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}
+</style>
+</head>
+<body>
+{% include 'base_nav.html' %}
+<h1>API 키 및 자격 증명 관리</h1>
+
+<div class="card">
+  <h2>API 키 저장 (Gemini 등)</h2>
+  <form method="post">
+    <input type="hidden" name="form_type" value="api">
+    이름: <input name="name" value="gemini" required><br>
+    키: <input name="api_key" type="password" required><br>
+    <button type="submit">저장</button>
+  </form>
+  <p style="color:#666;font-size:0.9em">저장 시 암호화됩니다. 관제형 수집기에만 전달됩니다.</p>
+  <h3>저장된 API 키</h3>
+  {% if api_keys %}
+  <table>
+    <tr><th>이름</th><th>상태</th></tr>
+    {% for k in api_keys %}
+    <tr><td>{{ k }}</td><td>저장됨 (암호화)</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>저장된 API 키 없음</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>기타 아이디 / 비밀번호 저장</h2>
+  <form method="post">
+    <input type="hidden" name="form_type" value="cred">
+    용도 이름: <input name="cred_name" placeholder="예: site_login" required><br>
+    아이디: <input name="cred_user" required><br>
+    비밀번호: <input name="cred_pw" type="password" required><br>
+    <button type="submit">저장</button>
+  </form>
+  {% if credentials %}
+  <p>저장된 자격 증명: {{ credentials | join(', ') }}</p>
+  {% else %}
+  <p>저장된 자격 증명 없음</p>
+  {% endif %}
+</div>
+
+{% if msg %}<p style="color:green;font-weight:bold">{{ msg }}</p>{% endif %}
+</body>
+</html>

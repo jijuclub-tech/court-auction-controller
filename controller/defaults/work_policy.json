@@ -1,0 +1,49 @@
+{
+  "site": "courtauction.go.kr",
+  "goal": "대법원 경매 정보 최신 수집",
+  "priority_order": [
+    "감정평가서",
+    "매각물건명세서",
+    "현황조사서",
+    "기본정보",
+    "기일모니터링"
+  ],
+  "regions": ["대전", "충남"],
+  "rules": {
+    "appraisal_wait_min": 20,
+    "appraisal_wait_max": 45,
+    "appraisal_daily_limit": 40,
+    "gate_delay_sec": 4,
+    "human_first": true
+  },
+  "collector_commands": {
+    "on_connect": "맵 수신 후 최신 사건 목록 확인",
+    "default_task": "감정평가서 우선 수집",
+    "on_dialog": "열람하기 다이얼로그는 프로그램 규칙 → 실패 시 사용자 호출",
+    "on_captcha": "등기부등본 보안문자는 AI 인식 → 실패 시 사용자 호출"
+  },
+  "global_settings": {
+    "max_retries": 3,
+    "timeout_seconds": 30,
+    "rate_limit_delay": 2.5
+  },
+  "load_balancing": {
+    "strategy": "weighted_round_robin",
+    "proxy_rotation_enabled": false
+  },
+  "collector_nodes": [
+    {
+      "node_id": "jiju0001",
+      "weight": 10,
+      "assigned_jurisdictions": ["대전지방법원", "대전지방법원 천안지원"],
+      "proxy": ""
+    },
+    {
+      "node_id": "jiju0002",
+      "weight": 8,
+      "assigned_jurisdictions": ["대전지방법원 홍성지원", "대전지방법원 공주지원"],
+      "proxy": ""
+    }
+  ],
+  "editable": true
+}

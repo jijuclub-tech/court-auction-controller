@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"><title>{{ t.collectors }}</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f8fafc}
+.card{background:white;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0}
+input,select{padding:6px;margin:4px}
+button{padding:6px 16px}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}
+.msg{color:#166534;font-weight:bold;padding:8px;background:#dcfce7;border-radius:4px}
+</style>
+</head>
+<body>
+{% include 'base_nav.html' %}
+<h1>수집기 등록</h1>
+
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <h2>새 수집기 추가</h2>
+  <form method="post">
+    이름: <input name="name" required placeholder="jiju0001">
+    유형:
+    <select name="type">
+      <option value="supply">보급형</option>
+      <option value="control">관제형</option>
+    </select>
+    메모: <input name="memo" placeholder="참고 사항" style="width:180px">
+    <button type="submit">추가</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>등록된 수집기 목록 ({{ collectors|length }}대)</h2>
+  {% if collectors %}
+  <table>
+    <tr><th>이름</th><th>유형</th><th>속도</th><th>성공률</th><th>메모</th></tr>
+    {% for c in collectors %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td>{{ c.type }}</td>
+      <td>{{ c.speed }}</td>
+      <td>{{ c.success }}%</td>
+      <td>{{ c.memo or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:#666">등록된 수집기가 없습니다.</p>
+  {% endif %}
+</div>
+</body>
+</html>

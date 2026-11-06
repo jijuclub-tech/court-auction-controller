@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"><title>Work Policy</title>
+<style>body{font-family:sans-serif;margin:20px}.nav a{margin-right:16px}textarea{width:100%;height:420px;font-family:monospace}</style>
+</head>
+<body>
+{% include 'base_nav.html' %}
+<h1>Work Policy (기본 업무)</h1>
+<p>대법원 경매 정보 최신 수집 기본값. 수정 후 저장하면 수집기가 다음 접속 시 반영합니다.</p>
+<form method="post">
+  <textarea name="policy_json">{{ policy_json }}</textarea><br>
+  <button type="submit">Save</button>
+</form>
+{% if msg %}<p style="color:green">{{ msg }}</p>{% endif %}
+</body>
+</html>

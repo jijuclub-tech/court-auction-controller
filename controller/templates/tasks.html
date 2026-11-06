@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"><title>{{ t.tasks }}</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f8fafc}
+.card{background:white;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0}
+input,textarea{padding:6px;width:100%;max-width:480px;margin:4px 0}
+button{padding:6px 16px}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}
+</style>
+</head>
+<body>
+{% include 'base_nav.html' %}
+<h1>작업 관리</h1>
+
+{% if msg %}<div class="msg" style="color:#166534;font-weight:bold;padding:8px;background:#dcfce7;border-radius:4px;margin:12px 0">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <h2>자연어로 작업 추가</h2>
+  <p style="color:#666">예: "대전지방법원 2025타경56881 감정평가서 다운로드" 또는 "최신 사건 목록 수집"</p>
+  <form method="post">
+    <input type="hidden" name="form_type" value="natural">
+    작업 내용:<br>
+    <textarea name="task_text" rows="3" placeholder="원하는 작업을 자연어로 입력하세요" required></textarea><br>
+    메모 (선택):<br>
+    <input name="memo" placeholder="참고 사항"><br>
+    <button type="submit">작업 추가</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>자연어 작업 목록</h2>
+  {% if natural_tasks %}
+  <table>
+    <tr><th>ID</th><th>작업 내용</th><th>메모</th><th>상태</th><th>생성</th></tr>
+    {% for nt in natural_tasks %}
+    <tr>
+      <td>{{ nt.id }}</td>
+      <td>{{ nt.text }}</td>
+      <td>{{ nt.memo }}</td>
+      <td>{{ nt.status }}</td>
+      <td>{{ nt.created[:16] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>등록된 자연어 작업 없음</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>상세 작업 추가 (선택)</h2>
+  <form method="post">
+    <input type="hidden" name="form_type" value="detail">
+    사건번호: <input name="case_no" style="width:160px">
+    법원: <input name="court" style="width:160px" placeholder="미지정">
+    <select name="task_type" style="width:140px">
+      <option>감정평가서</option>
+      <option>등기부등본</option>
+      <option>기본정보</option>
+    </select>
+    <button type="submit">추가</button>
+  </form>
+  {% if tasks %}
+  <table>
+    <tr><th>사건번호</th><th>유형</th><th>상태</th><th>배정</th></tr>
+    {% for tsk in tasks %}
+    <tr><td>{{ tsk.case_no }}</td><td>{{ tsk.task_type }}</td><td>{{ tsk.status }}</td><td>{{ tsk.assigned_to }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+</body>
+</html>

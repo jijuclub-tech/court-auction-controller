@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head><meta charset="UTF-8"><title>{{ t.instructions }}</title>
+<style>
+body{font-family:sans-serif;margin:20px;background:#f8fafc}
+.card{background:white;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0}
+input,select,textarea{padding:6px;margin:4px;width:100%;max-width:400px}
+button{padding:6px 16px}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}
+.msg{color:#166534;font-weight:bold;padding:8px;background:#dcfce7;border-radius:4px}
+</style>
+</head>
+<body>
+{% include 'base_nav.html' %}
+<h1>업무 지시</h1>
+
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <h2>지시서 발행</h2>
+  <form method="post">
+    수집기: <input name="collector" required placeholder="jiju0001"><br>
+    작업 유형:
+    <select name="task_type">
+      <option>감정평가서</option>
+      <option>등기부등본</option>
+      <option>기본정보</option>
+    </select><br>
+    사건번호 (한 줄에 하나):<br>
+    <textarea name="cases" rows="4" placeholder="2025타경56881"></textarea><br>
+    메모: <input name="memo" placeholder="참고"><br>
+    <button type="submit">지시서 발행</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>대기 중인 지시서 ({{ instructions|length }}건)</h2>
+  {% if instructions %}
+  <table>
+    <tr><th>수집기</th><th>유형</th><th>사건</th><th>생성</th></tr>
+    {% for i in instructions %}
+    <tr>
+      <td>{{ i.collector }}</td>
+      <td>{{ i.task_type }}</td>
+      <td>{{ i.cases }}</td>
+      <td>{{ i.created[:16] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:#666">대기 중인 지시서 없음</p>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<title>Bidguard Controller</title>
+<style>
+body { font-family: sans-serif; margin: 20px; background: #f8fafc; }
+h1 { color: #14532d; }
+.nav a { margin-right: 16px; color: #166534; text-decoration: none; }
+.card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h1>Bidguard Controller</h1>
+{% include 'base_nav.html' %}
+<div class="card">
+  <h2>{{ t.status }}</h2>
+  <pre>{{ summary }}</pre>
+</div>
+{% if stats %}
+<div class="card">
+  <h2>수집기 통계</h2>
+  <p>전체 수집기: {{ stats.total_collectors }} / 활성: {{ stats.active_nodes }}</p>
+  <p>성공: {{ stats.total_success }} / 실패: {{ stats.total_error }} / 성공률: {{ stats.success_rate }}%</p>
+</div>
+{% endif %}
+</body>
+</html>

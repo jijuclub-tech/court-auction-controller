@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<title>{{ t.login }}</title>
+<style>
+body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f8fafc; }
+.box { background: white; padding: 24px; border-radius: 8px; border: 1px solid #e5e7eb; width: 320px; }
+input { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
+button { width: 100%; padding: 8px; background: #166534; color: white; border: none; border-radius: 4px; }
+.lang { text-align: center; margin-top: 12px; }
+.lang a { margin: 0 8px; color: #166534; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>{{ t.login }}</h2>
+  <form method="post">
+    <input name="username" placeholder="{{ t.username }}" required>
+    <input name="password" type="password" placeholder="{{ t.password }}" required>
+    <button type="submit">{{ t.login }}</button>
+  </form>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<p style="color:red">{{ messages[0] }}</p>{% endif %}
+  {% endwith %}
+  <div class="lang">
+    <a href="/lang/ko">한글</a> | <a href="/lang/en">English</a>
+  </div>
+</div>
+</body>
+</html>
