@@ -65,12 +65,19 @@ if not ctrl.verify_admin("admin", "admin"):
     except Exception:
         pass
 
-# jiju0001~jiju0009 관제형 미리 등록
+# jiju0001~jiju0009 관제형 미리 등록 (이미 있으면 그대로 둠 → 재시작해도 메모·실적 유지)
 for i in range(1, 10):
     try:
-        ctrl.register_collector(f"jiju{i:04d}", "control")
+        if f"jiju{i:04d}" not in ctrl.collectors:
+            ctrl.register_collector(f"jiju{i:04d}", "control")
     except Exception:
         pass
+
+
+def done(msg: str, ok: bool = True, endpoint: str = "index"):
+    """저장 후 같은 화면으로 다시 이동 + 알림 (새로고침해도 두 번 저장되지 않음)"""
+    flash(msg, "ok" if ok else "error")
+    return redirect(url_for(endpoint))
 
 
 def login_required(f):
@@ -90,13 +97,17 @@ def login():
         if ctrl.verify_admin(user, pw):
             session["admin"] = user
             return redirect(url_for("index"))
-        flash("Login failed")
+        flash("아이디 또는 비밀번호가 맞지 않습니다", "error")
     return render_template("login.html")
 
 
 @app.route("/logout")
 def logout():
+    lang = session.get("lang")
     session.clear()
+    if lang:
+        session["lang"] = lang
+    flash("로그아웃되었습니다", "ok")
     return redirect(url_for("login"))
 
 
@@ -105,24 +116,33 @@ def logout():
 def index():
     summary = ctrl.get_status_summary()
     stats = ctrl.get_statistics()
-    return render_template("index.html", summary=summary, stats=stats)
+    counts = {
+        "collectors": len(ctrl.collectors),
+        "natural_tasks": len(getattr(ctrl, "natural_tasks", [])),
+        "instructions": len(getattr(ctrl, "pending_instructions", [])),
+        "api_keys": len(ctrl.list_api_keys()),
+    }
+    return render_template("index.html", summary=summary, stats=stats, counts=counts, active="home")
 
 
 @app.route("/collectors", methods=["GET", "POST"])
 @login_required
 def collectors():
-    msg = ""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         ctype = request.form.get("type", "supply")
-        if name:
-            memo = request.form.get("memo", "").strip()
-            ctrl.register_collector(name, ctype)
-            if memo and name in ctrl.collectors:
-                ctrl.collectors[name]["memo"] = memo
-            msg = f"수집기 '{name}' 등록 완료 ({ctype})"
-        else:
-            msg = "이름을 입력하세요"
+        memo = request.form.get("memo", "").strip()
+        if not name:
+            return done("이름을 입력하세요", False, "collectors")
+        label = "관제형" if ctype == "control" else "보급형"
+        try:
+            if name in ctrl.collectors:
+                ctrl.update_collector(name, ctype, memo)
+                return done(f"이미 있는 수집기 '{name}'의 유형·메모를 갱신했습니다 ({label})", True, "collectors")
+            ctrl.register_collector(name, ctype, memo=memo)
+            return done(f"수집기 '{name}' 등록 완료 ({label})", True, "collectors")
+        except Exception as e:
+            return done(f"수집기 등록 실패: {e}", False, "collectors")
     items = []
     for name, c in ctrl.collectors.items():
         items.append({
@@ -131,36 +151,39 @@ def collectors():
             "speed": c.get("speed_score", 1),
             "success": round(c.get("success_rate", 0) * 100, 1),
             "memo": c.get("memo", ""),
+            "registered": (c.get("registered_at") or "")[:16].replace("T", " "),
+            "busy": c.get("is_busy", False),
         })
-    return render_template("collectors.html", collectors=items, msg=msg)
+    return render_template("collectors.html", collectors=items, active="collectors")
 
 
 @app.route("/tasks", methods=["GET", "POST"])
 @login_required
 def tasks():
-    msg = ""
     if request.method == "POST":
         form_type = request.form.get("form_type", "natural")
-        if form_type == "natural":
-            text = request.form.get("task_text", "").strip()
-            memo = request.form.get("memo", "").strip()
-            if text:
-                t = ctrl.add_natural_task(text, memo)
-                msg = f"작업 추가됨: {t['id']}"
-            else:
-                msg = "작업 내용을 입력하세요"
-        else:
+        try:
+            if form_type == "natural":
+                text = request.form.get("task_text", "").strip()
+                memo = request.form.get("memo", "").strip()
+                if not text:
+                    return done("작업 내용을 입력하세요", False, "tasks")
+                nt = ctrl.add_natural_task(text, memo)
+                return done(f"작업 추가 완료 (번호 {nt['id']})", True, "tasks")
             case_no = request.form.get("case_no", "").strip()
             task_name = request.form.get("task_type", "감정평가서")
             court = request.form.get("court", "")
-            if case_no:
-                ctrl.ensure_case(case_no, court or "미지정")
-                try:
-                    tt = TaskType(task_name)
-                except Exception:
-                    tt = TaskType.APPRAISAL
-                ctrl.create_task(case_no, tt)
-                msg = f"상세 작업 추가: {case_no}"
+            if not case_no:
+                return done("사건번호를 입력하세요", False, "tasks")
+            ctrl.ensure_case(case_no, court or "미지정")
+            try:
+                tt = TaskType(task_name)
+            except Exception:
+                tt = TaskType.APPRAISAL
+            ctrl.create_task(case_no, tt)
+            return done(f"상세 작업 추가 완료: {case_no} ({tt.value})", True, "tasks")
+        except Exception as e:
+            return done(f"작업 추가 실패: {e}", False, "tasks")
     natural = getattr(ctrl, "natural_tasks", [])
     items = []
     try:
@@ -176,70 +199,88 @@ def tasks():
                 "task_type": d.get("task_type",""),
                 "status": d.get("status",""),
                 "assigned_to": d.get("assigned_to") or "",
+                "created": (d.get("created_at") or "")[:16].replace("T", " "),
             })
+        items.sort(key=lambda x: x["created"], reverse=True)
     except Exception:
         pass
-    return render_template("tasks.html", tasks=items, natural_tasks=natural, msg=msg)
+    return render_template("tasks.html", tasks=items, natural_tasks=list(reversed(natural)), active="tasks")
 
 
 @app.route("/api-keys", methods=["GET", "POST"])
 @login_required
 def api_keys():
-    msg = ""
     if request.method == "POST":
         form_type = request.form.get("form_type", "api")
-        if form_type == "api":
-            name = request.form.get("name", "gemini").strip()
-            key = request.form.get("api_key", "").strip()
-            if name and key:
+        try:
+            if form_type == "api":
+                name = request.form.get("name", "gemini").strip()
+                key = request.form.get("api_key", "").strip()
+                if not (name and key):
+                    return done("이름과 키를 모두 입력하세요", False, "api_keys")
                 ctrl.store_api_key(name, key)
-                msg = f"API 키 저장: {name}"
-        elif form_type == "cred":
-            name = request.form.get("cred_name", "").strip()
-            user = request.form.get("cred_user", "").strip()
-            pw = request.form.get("cred_pw", "").strip()
-            if name and user and pw:
+                return done(f"API 키 '{name}' 저장 완료 (암호화됨)", True, "api_keys")
+            if form_type == "cred":
+                name = request.form.get("cred_name", "").strip()
+                user = request.form.get("cred_user", "").strip()
+                pw = request.form.get("cred_pw", "").strip()
+                if not (name and user and pw):
+                    return done("용도 이름·아이디·비밀번호를 모두 입력하세요", False, "api_keys")
                 ctrl.store_credential(name, user, pw)
-                msg = f"자격 증명 저장: {name}"
+                return done(f"자격 증명 '{name}' 저장 완료 (암호화됨)", True, "api_keys")
+        except Exception as e:
+            # 오류 내용에 키 값이 섞이지 않도록 종류만 표시
+            return done(f"저장 실패 ({type(e).__name__})", False, "api_keys")
     creds = ctrl.list_credentials()
     api_key_names = ctrl.list_api_keys()
-    return render_template("api_keys.html", msg=msg, credentials=creds, api_keys=api_key_names)
+    return render_template("api_keys.html", credentials=creds, api_keys=api_key_names, active="api_keys")
 
 
 @app.route("/instructions", methods=["GET", "POST"])
 @login_required
 def instructions():
-    msg = ""
     if request.method == "POST":
         collector = request.form.get("collector", "").strip()
         cases_raw = request.form.get("cases", "").strip()
         task_name = request.form.get("task_type", "감정평가서")
+        memo = request.form.get("memo", "").strip()
         cases = [c.strip() for c in cases_raw.splitlines() if c.strip()]
-        if collector and cases:
+        if not (collector and cases):
+            return done("수집기와 사건번호를 입력하세요", False, "instructions")
+        try:
             try:
                 tt = TaskType(task_name)
             except Exception:
                 tt = TaskType.APPRAISAL
             instr = ctrl.generate_instruction(collector, tt, cases)
-            msg = f"지시서 발행: {instr.instruction_id[:8]} → {collector}"
-        else:
-            msg = "수집기와 사건번호를 입력하세요"
+            if memo:
+                instr.notes = f"{instr.notes} / 메모: {memo}"
+                ctrl._save_state()
+            warn = "" if collector in ctrl.collectors else " — 주의: 등록되지 않은 수집기 이름입니다"
+            return done(f"지시서 발행 완료: {instr.instruction_id[:8]} → {collector} ({len(cases)}건){warn}",
+                        not warn, "instructions")
+        except Exception as e:
+            return done(f"지시서 발행 실패: {e}", False, "instructions")
     # 대기 지시서 목록
     pending = []
-    for i in getattr(ctrl, "pending_instructions", []):
+    for i in reversed(getattr(ctrl, "pending_instructions", [])):
         pending.append({
+            "id": i.instruction_id[:8],
+            "count": len(i.cases),
+            "notes": i.notes,
             "collector": i.collector_name,
             "task_type": i.task_type,
             "cases": ", ".join(i.cases[:3]) + ("..." if len(i.cases) > 3 else ""),
             "created": i.created_at,
         })
-    return render_template("instructions.html", instructions=pending, msg=msg)
+    return render_template("instructions.html", instructions=pending,
+                           collector_names=sorted(ctrl.collectors.keys()), active="instructions")
 
 
 @app.route("/reports")
 @login_required
 def reports():
-    return render_template("reports.html")
+    return render_template("reports.html", active="reports")
 
 
 @app.route("/api/collector/connect", methods=["POST"])
@@ -283,10 +324,12 @@ def policy():
         try:
             data = json.loads(raw)
             save_policy(data)
-            msg = "Saved"
+            return done("업무 정책 저장 완료 — 수집기가 다음 접속 때 반영합니다", True, "policy")
         except Exception as e:
-            msg = f"Error: {e}"
-    return render_template("policy.html", policy_json=json.dumps(data, ensure_ascii=False, indent=2), msg=msg)
+            # 잘못된 JSON이면 입력한 내용을 그대로 남겨 두고 고칠 수 있게 함
+            flash(f"저장 실패: JSON 형식 오류 ({e})", "error")
+            return render_template("policy.html", policy_json=raw, active="policy")
+    return render_template("policy.html", policy_json=json.dumps(data, ensure_ascii=False, indent=2), active="policy")
 
 @app.route("/api/policy")
 def api_policy():

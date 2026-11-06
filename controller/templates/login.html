@@ -2,30 +2,41 @@
 <html lang="{{ lang }}">
 <head>
 <meta charset="UTF-8">
-<title>{{ t.login }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ t.login }} · 관제기</title>
 <style>
-body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f8fafc; }
-.box { background: white; padding: 24px; border-radius: 8px; border: 1px solid #e5e7eb; width: 320px; }
-input { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
-button { width: 100%; padding: 8px; background: #166534; color: white; border: none; border-radius: 4px; }
-.lang { text-align: center; margin-top: 12px; }
-.lang a { margin: 0 8px; color: #166534; }
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;
+  background:linear-gradient(160deg,#0f5c37 0%,#167a4a 45%,#eaf3ee 45%);
+  font-family:"Pretendard","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#1f2a24}
+.box{background:#fff;padding:30px 28px;border-radius:18px;width:100%;max-width:360px;box-shadow:0 12px 32px rgba(15,60,40,.18)}
+.brand{font-weight:800;color:#0f5c37;letter-spacing:.3px}
+.brand span{color:#6b7a71;font-weight:500;margin-left:4px}
+h2{margin:6px 0 18px;font-size:1.3em}
+input{font:inherit;width:100%;padding:11px 13px;margin:0 0 10px;border:1px solid #cfd9d3;border-radius:10px;background:#fbfdfc}
+input:focus{outline:none;border-color:#167a4a;box-shadow:0 0 0 3px rgba(22,122,74,.15)}
+button{font:inherit;width:100%;padding:11px;background:#167a4a;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;margin-top:4px}
+button:hover{background:#0f5c37}
+.alert{border-radius:10px;padding:10px 12px;margin:0 0 12px;font-weight:600;font-size:.92em}
+.alert.ok{background:#e3f6ea;color:#11623a}
+.alert.error{background:#fdecec;color:#a12a2a}
+.lang{text-align:center;margin-top:16px;font-size:.9em}
+.lang a{margin:0 8px;color:#167a4a}
 </style>
 </head>
 <body>
 <div class="box">
+  <div class="brand">BIDGUARD<span>관제기</span></div>
   <h2>{{ t.login }}</h2>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in messages %}<div class="alert {{ 'error' if cat == 'error' else 'ok' }}">{{ m }}</div>{% endfor %}
+  {% endwith %}
   <form method="post">
-    <input name="username" placeholder="{{ t.username }}" required>
-    <input name="password" type="password" placeholder="{{ t.password }}" required>
+    <input name="username" placeholder="{{ t.username }}" required autocomplete="username">
+    <input name="password" type="password" placeholder="{{ t.password }}" required autocomplete="current-password">
     <button type="submit">{{ t.login }}</button>
   </form>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}<p style="color:red">{{ messages[0] }}</p>{% endif %}
-  {% endwith %}
-  <div class="lang">
-    <a href="/lang/ko">한글</a> | <a href="/lang/en">English</a>
-  </div>
+  <div class="lang"><a href="/lang/ko">한글</a> | <a href="/lang/en">English</a></div>
 </div>
 </body>
 </html>

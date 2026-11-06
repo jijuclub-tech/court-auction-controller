@@ -1,75 +1,76 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}">
-<head><meta charset="UTF-8"><title>{{ t.tasks }}</title>
-<style>
-body{font-family:sans-serif;margin:20px;background:#f8fafc}
-.card{background:white;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:16px 0}
-input,textarea{padding:6px;width:100%;max-width:480px;margin:4px 0}
-button{padding:6px 16px}
-table{border-collapse:collapse;width:100%;margin-top:12px}
-td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}
-</style>
-</head>
-<body>
-{% include 'base_nav.html' %}
+{% extends 'base.html' %}
+{% block title %}{{ t.tasks }}{% endblock %}
+{% block content %}
 <h1>작업 관리</h1>
-
-{% if msg %}<div class="msg" style="color:#166534;font-weight:bold;padding:8px;background:#dcfce7;border-radius:4px;margin:12px 0">{{ msg }}</div>{% endif %}
+<p class="lead">말로 쓰듯 작업을 적어 넣거나, 사건번호로 상세 작업을 추가합니다. 추가하면 아래 목록 맨 위에 바로 나타납니다.</p>
 
 <div class="card">
   <h2>자연어로 작업 추가</h2>
-  <p style="color:#666">예: "대전지방법원 2025타경56881 감정평가서 다운로드" 또는 "최신 사건 목록 수집"</p>
   <form method="post">
     <input type="hidden" name="form_type" value="natural">
-    작업 내용:<br>
-    <textarea name="task_text" rows="3" placeholder="원하는 작업을 자연어로 입력하세요" required></textarea><br>
-    메모 (선택):<br>
-    <input name="memo" placeholder="참고 사항"><br>
-    <button type="submit">작업 추가</button>
+    <div class="field wide"><label for="n-text">작업 내용</label>
+      <textarea id="n-text" name="task_text" rows="3" required
+        placeholder="예: 대전지방법원 2025타경56881 감정평가서 다운로드 / 최신 사건 목록 수집"></textarea></div>
+    <div class="row">
+      <div class="field"><label for="n-memo">메모 (선택)</label>
+        <input id="n-memo" name="memo" placeholder="참고 사항"></div>
+      <button class="btn" type="submit">작업 추가</button>
+    </div>
   </form>
 </div>
 
 <div class="card">
-  <h2>자연어 작업 목록</h2>
+  <h2>자연어 작업 목록 <span class="count">{{ natural_tasks|length }}건</span></h2>
   {% if natural_tasks %}
-  <table>
-    <tr><th>ID</th><th>작업 내용</th><th>메모</th><th>상태</th><th>생성</th></tr>
+  <div class="table-wrap"><table>
+    <tr><th>번호</th><th>작업 내용</th><th>메모</th><th>상태</th><th>생성</th></tr>
     {% for nt in natural_tasks %}
-    <tr>
-      <td>{{ nt.id }}</td>
+    <tr class="{{ 'new' if loop.first }}">
+      <td class="mono">{{ nt.id }}</td>
       <td>{{ nt.text }}</td>
-      <td>{{ nt.memo }}</td>
-      <td>{{ nt.status }}</td>
-      <td>{{ nt.created[:16] }}</td>
+      <td>{{ nt.memo or '—' }}</td>
+      <td><span class="tag wait">{{ nt.status }}</span></td>
+      <td class="muted mono">{{ nt.created[:16]|replace('T', ' ') }}</td>
     </tr>
     {% endfor %}
-  </table>
+  </table></div>
   {% else %}
-  <p>등록된 자연어 작업 없음</p>
+  <div class="empty"><b>등록된 자연어 작업이 없습니다</b>위 칸에 하고 싶은 작업을 적어 보세요.</div>
   {% endif %}
 </div>
 
 <div class="card">
-  <h2>상세 작업 추가 (선택)</h2>
+  <h2>상세 작업 추가 (사건번호 지정) <span class="count">{{ tasks|length }}건</span></h2>
   <form method="post">
     <input type="hidden" name="form_type" value="detail">
-    사건번호: <input name="case_no" style="width:160px">
-    법원: <input name="court" style="width:160px" placeholder="미지정">
-    <select name="task_type" style="width:140px">
-      <option>감정평가서</option>
-      <option>등기부등본</option>
-      <option>기본정보</option>
-    </select>
-    <button type="submit">추가</button>
+    <div class="row">
+      <div class="field"><label for="d-case">사건번호</label>
+        <input id="d-case" name="case_no" required placeholder="예: 2025타경56881"></div>
+      <div class="field"><label for="d-court">법원</label>
+        <input id="d-court" name="court" placeholder="미지정"></div>
+      <div class="field" style="flex:0 1 170px"><label for="d-type">작업 유형</label>
+        <select id="d-type" name="task_type">
+          <option>감정평가서</option>
+          <option>등기부등본</option>
+          <option>기본정보</option>
+        </select></div>
+      <button class="btn" type="submit">추가</button>
+    </div>
   </form>
   {% if tasks %}
-  <table>
-    <tr><th>사건번호</th><th>유형</th><th>상태</th><th>배정</th></tr>
+  <div class="table-wrap"><table>
+    <tr><th>사건번호</th><th>유형</th><th>상태</th><th>배정</th><th>생성</th></tr>
     {% for tsk in tasks %}
-    <tr><td>{{ tsk.case_no }}</td><td>{{ tsk.task_type }}</td><td>{{ tsk.status }}</td><td>{{ tsk.assigned_to }}</td></tr>
+    <tr>
+      <td><b>{{ tsk.case_no }}</b></td><td>{{ tsk.task_type }}</td>
+      <td><span class="tag {{ 'done' if tsk.status == '성공' else 'wait' }}">{{ tsk.status }}</span></td>
+      <td>{{ tsk.assigned_to or '—' }}</td>
+      <td class="muted mono">{{ tsk.created or '—' }}</td>
+    </tr>
     {% endfor %}
-  </table>
+  </table></div>
+  {% else %}
+  <div class="empty"><b>상세 작업이 없습니다</b>사건번호를 넣고 추가하세요.</div>
   {% endif %}
 </div>
-</body>
-</html>
+{% endblock %}

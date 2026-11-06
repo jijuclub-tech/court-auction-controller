@@ -1,14 +1,18 @@
-<div class="nav">
-  <a href="/">{{ t.home }}</a>
-  <a href="/collectors">{{ t.collectors }}</a>
-  <a href="/tasks">{{ t.tasks }}</a>
-  <a href="/instructions">{{ t.instructions }}</a>
-  <a href="/api-keys">{{ t.api_keys }}</a>
-  <a href="/policy">Policy</a>
-  <a href="/reports">{{ t.reports }}</a>
-  <a href="/logout" onclick="return confirm('정말 로그아웃 하시겠습니까?');">{{ t.logout }}</a>
-  <span style="float:right">
-    <a href="/lang/ko">한글</a> |
-    <a href="/lang/en">English</a>
-  </span>
-</div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="/">BIDGUARD<span>관제기</span></a>
+    <nav class="menu">
+      <a href="/" class="{{ 'on' if active == 'home' }}">{{ t.home }}</a>
+      <a href="/collectors" class="{{ 'on' if active == 'collectors' }}">{{ t.collectors }}</a>
+      <a href="/tasks" class="{{ 'on' if active == 'tasks' }}">{{ t.tasks }}</a>
+      <a href="/instructions" class="{{ 'on' if active == 'instructions' }}">{{ t.instructions }}</a>
+      <a href="/api-keys" class="{{ 'on' if active == 'api_keys' }}">{{ t.api_keys }}</a>
+      <a href="/policy" class="{{ 'on' if active == 'policy' }}">Policy</a>
+      <a href="/reports" class="{{ 'on' if active == 'reports' }}">{{ t.reports }}</a>
+    </nav>
+    <div class="side">
+      <a href="/lang/ko">한글</a><span>|</span><a href="/lang/en">English</a>
+      <a class="logout" href="/logout" onclick="return confirm('정말 로그아웃 하시겠습니까?');">{{ t.logout }}</a>
+    </div>
+  </div>
+</header>

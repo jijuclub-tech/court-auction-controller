@@ -142,6 +142,9 @@ class AuctionController:
         self.appraisal_today_count = 0
         self.last_plan_time: Optional[datetime] = None
         self.pending_instructions: List[WorkInstruction] = []
+        self.natural_tasks: List[dict] = []
+        # 수집기·자연어 작업·대기 지시서를 재시작 후에도 유지하는 상태 파일 (DB 옆)
+        self.state_path = self.db_path.with_name("controller_state.json")
         self.policy: dict = {}
         self._load_policy()
 
@@ -193,7 +196,7 @@ class AuctionController:
 
     def register_collector(self, name: str, ctype: str = "supply", speed_score: float = 1.0,
                            weight: float = 1.0, jurisdictions: Optional[List[str]] = None,
-                           proxy: str = ""):
+                           proxy: str = "", memo: str = ""):
         self.collectors[name] = {
             "name": name,
             "type": ctype,
@@ -208,8 +211,23 @@ class AuctionController:
             "weight": weight,
             "assigned_jurisdictions": jurisdictions or [],
             "proxy": proxy,
+            "memo": memo,
         }
         logger.info(f"수집기 등록: {name} ({ctype}, weight={weight})")
+        self._save_state()
+
+    def update_collector(self, name: str, ctype: Optional[str] = None, memo: Optional[str] = None) -> bool:
+        """이미 등록된 수집기의 유형·메모만 갱신 (실적 기록은 유지)"""
+        c = self.collectors.get(name)
+        if c is None:
+            return False
+        if ctype:
+            c["type"] = ctype
+        if memo is not None:
+            c["memo"] = memo
+        self._save_state()
+        logger.info(f"수집기 갱신: {name}")
+        return True
 
     # ── 수집기 로그 ──────────────────────────────────────────
     LOG_DIR = Path("logs")
@@ -344,7 +362,10 @@ class AuctionController:
             self.natural_tasks = []
         self.natural_tasks.append(task)
         logger.info(f"자연어 작업 추가: {task_id} - {text[:40]}")
+        self._save_state()
         return task
+
+    def store_api_key(self, name: str, api_key: str):
         """API 키 저장 (암호화)"""
         f = self._get_fernet()
         store = {}
@@ -558,6 +579,7 @@ class AuctionController:
             notes="관제기 지정 저장 경로 사용",
         )
         self.pending_instructions.append(instr)
+        self._save_state()
         logger.info(f"지시서 생성: {collector_name} / {task_type.value} / {len(cases)}건 (대기 {wait_seconds}초)")
         return instr
 
@@ -565,6 +587,7 @@ class AuctionController:
         for instr in self.pending_instructions:
             if instr.collector_name == collector_name:
                 self.pending_instructions.remove(instr)
+                self._save_state()
                 return instr
         return None
 
@@ -706,6 +729,7 @@ class AuctionController:
         # 속도 점수: 성공률 높고 평균 시간이 짧을수록 높음
         c["speed_score"] = round(c["success_rate"] * (60.0 / max(c["avg_duration"], 10)), 2)
         logger.info(f"[{name}] 성능 갱신: 성공률={c['success_rate']:.2f}, 속도점수={c['speed_score']}")
+        self._save_state()
 
     def get_status_summary(self) -> dict:
         total_cases = len(self.cases)
@@ -747,9 +771,46 @@ class AuctionController:
         conn.commit()
         conn.close()
 
+    def _save_state(self):
+        """수집기 목록·자연어 작업·대기 지시서를 파일에 저장 (임시 파일에 쓴 뒤 교체 → 도중에 꺼져도 파일이 깨지지 않음)"""
+        data = {
+            "version": 1,
+            "saved_at": datetime.now().isoformat(),
+            "collectors": self.collectors,
+            "natural_tasks": self.natural_tasks,
+            "pending_instructions": [asdict(i) for i in self.pending_instructions],
+        }
+        try:
+            tmp = self.state_path.with_name(self.state_path.name + ".tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(self.state_path)
+        except Exception as e:
+            logger.error(f"상태 저장 실패: {e}")
+
     def _load_state(self):
-        # 간단 로드 (실제로는 역직렬화 필요)
-        pass
+        """재시작 시 저장된 목록(수집기·자연어 작업·대기 지시서) 복원"""
+        if self.state_path.exists():
+            try:
+                data = json.loads(self.state_path.read_text(encoding="utf-8"))
+                self.collectors = dict(data.get("collectors") or {})
+                for c in self.collectors.values():
+                    c["is_busy"] = False  # 꺼지기 전 작업 중이던 표시는 해제
+                self.natural_tasks = list(data.get("natural_tasks") or [])
+                fields = set(WorkInstruction.__dataclass_fields__)
+                self.pending_instructions = [
+                    WorkInstruction(**{k: v for k, v in d.items() if k in fields})
+                    for d in (data.get("pending_instructions") or [])
+                ]
+                logger.info(f"상태 복원: 수집기 {len(self.collectors)}대, 자연어 작업 {len(self.natural_tasks)}건, "
+                            f"대기 지시서 {len(self.pending_instructions)}건")
+            except Exception as e:
+                # 깨진 파일은 지우지 않고 옆에 보관해 두고 빈 상태로 시작
+                bad = self.state_path.with_name(self.state_path.name + ".broken")
+                try:
+                    self.state_path.replace(bad)
+                except Exception:
+                    pass
+                logger.error(f"상태 파일 읽기 실패({e}) → {bad.name}로 보관하고 빈 상태로 시작")
 
 
 def main():

@@ -1,11 +1,8 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}">
-<head><meta charset="UTF-8"><title>{{ t.reports }}</title>
-<style>body{font-family:sans-serif;margin:20px}.nav a{margin-right:16px}</style>
-</head>
-<body>
-{% include 'base_nav.html' %}
+{% extends 'base.html' %}
+{% block title %}{{ t.reports }}{% endblock %}
+{% block content %}
 <h1>{{ t.reports }}</h1>
-<p>Reports from collectors will appear here.</p>
-</body>
-</html>
+<div class="card">
+  <div class="empty"><b>아직 받은 보고가 없습니다</b>Reports from collectors will appear here.</div>
+</div>
+{% endblock %}

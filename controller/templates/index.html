@@ -1,28 +1,34 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}">
-<head>
-<meta charset="UTF-8">
-<title>Bidguard Controller</title>
-<style>
-body { font-family: sans-serif; margin: 20px; background: #f8fafc; }
-h1 { color: #14532d; }
-.nav a { margin-right: 16px; color: #166534; text-decoration: none; }
-.card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 12px 0; }
-</style>
-</head>
-<body>
-<h1>Bidguard Controller</h1>
-{% include 'base_nav.html' %}
-<div class="card">
-  <h2>{{ t.status }}</h2>
-  <pre>{{ summary }}</pre>
+{% extends 'base.html' %}
+{% block title %}{{ t.home }}{% endblock %}
+{% block content %}
+<h1>관제 현황</h1>
+<p class="lead">수집기·작업·지시서의 현재 상태를 한눈에 봅니다. 숫자 카드를 누르면 해당 메뉴로 갑니다.</p>
+
+<div class="stats">
+  <a class="stat" href="/collectors"><div class="n">{{ counts.collectors }}</div><div class="l">등록 수집기</div></a>
+  <a class="stat" href="/tasks"><div class="n">{{ counts.natural_tasks }}</div><div class="l">자연어 작업</div></a>
+  <a class="stat" href="/instructions"><div class="n">{{ counts.instructions }}</div><div class="l">대기 지시서</div></a>
+  <a class="stat" href="/api-keys"><div class="n">{{ counts.api_keys }}</div><div class="l">저장된 API 키</div></a>
 </div>
-{% if stats %}
-<div class="card">
-  <h2>수집기 통계</h2>
-  <p>전체 수집기: {{ stats.total_collectors }} / 활성: {{ stats.active_nodes }}</p>
-  <p>성공: {{ stats.total_success }} / 실패: {{ stats.total_error }} / 성공률: {{ stats.success_rate }}%</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>{{ t.status }}</h2>
+    <dl class="kv">
+      {% for k, v in summary.items() %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+    </dl>
+  </div>
+  {% if stats %}
+  <div class="card">
+    <h2>수집기 통계</h2>
+    <dl class="kv">
+      <dt>전체 수집기</dt><dd>{{ stats.total_collectors }}</dd>
+      <dt>활성(대기 중)</dt><dd>{{ stats.active_nodes }}</dd>
+      <dt>성공</dt><dd>{{ stats.total_success }}</dd>
+      <dt>실패</dt><dd>{{ stats.total_error }}</dd>
+      <dt>성공률</dt><dd>{{ stats.success_rate }}%</dd>
+    </dl>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
-</body>
-</html>
+{% endblock %}
