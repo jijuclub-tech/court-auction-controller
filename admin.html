@@ -26,6 +26,7 @@ button{padding:7px 12px;border-radius:7px;border:1px solid #94a3b8;background:#f
 button.go{background:var(--go);border-color:var(--go);color:#fff}
 button.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 button.sm{padding:3px 8px;font-size:13px}
+button:disabled{opacity:.4;cursor:default}
 input,select,textarea{padding:6px;border:1px solid #cbd5e1;border-radius:6px;background:#fff}
 textarea{width:100%}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}
@@ -61,6 +62,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  <button data-t="menu">메뉴(사이트)</button>
  <button data-t="routes">정해진 경로</button>
  <button data-t="ladder">AI 단계</button>
+ <button data-t="learning">학습서<span id="learncount"></span></button>
  <button data-t="orders">지시서</button>
  <button data-t="updates">프로그램 갱신</button>
  <button data-t="logs">기록</button>
@@ -107,6 +109,27 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  관제기와 연결이 안 되면 수집기는 바로 4단계로 갑니다. 꺼진 칸은 부르지 않고 지나갑니다.</p>
  <div id="ladder"></div>
  <button class="go" onclick="saveBundle()">저장 — 새 판으로 수집기에 보내기</button></div>
+</section>
+
+<section id="t_learning">
+ <div class="card"><h2>학습서 — 누가 쓰고 누가 검수하나</h2>
+ <p class="mut">수집기가 다녀온 기록(어느 화면에서 무엇을 눌렀고 성공했는지, 걸린 시간, 뜬 알림창)을 관제기가 단계별로 센 다음,
+ <b>작성 AI</b>가 사이트별 학습서를 쓰고 <b>검수 AI</b>가 문제만 지적합니다(고쳐 쓰지 않음). 관리인이 승인해야 수집기에 갑니다.
+ 수집기가 "이 사이트에 들어갑니다"라고 알리면 승인된 최신 학습서를 받습니다. 학습서의 단계마다 '쉬움'이면 1단계(딥시크 등)부터, '어려움'이면 2단계(제미나이 등)부터 AI를 씁니다.</p>
+ <div class="row"><b>작성 AI</b> <select id="lwriter"></select> <b>검수 AI</b> <select id="lreviewer"></select></div>
+ <div id="lsame" class="mut"></div>
+ <div class="row">기록이 <input id="lauto" type="number" min="0" max="100000" style="width:90px"> 건 새로 쌓이면 자동으로 만들기 (0 = 관리인이 누를 때만)</div>
+ <h3>AI별 방식 · 모델 · 키</h3>
+ <p class="mut">글록은 '봇'(글록 봇이 관제기에서 일을 가져감, 봇 토큰 사용) 또는 'API'(xAI 키)로 씁니다. 나머지는 API 키로 씁니다.
+ 키는 관제기 자료 폴더의 관리인 전용 파일에만 두고 화면에 다시 보여 주지 않습니다. 설정 파일(controller.env)에 넣은 키도 씁니다.</p>
+ <div id="lais"></div>
+ <button class="go" onclick="saveLearnSettings()">AI 선택 저장</button></div>
+ <div class="card"><h2>사이트별 기록 · 학습서 만들기</h2><div id="lsites"></div></div>
+ <div class="card"><h2>만드는 중 · 최근 작업</h2><table id="ljobs"></table></div>
+ <div class="card"><h2>학습서 판</h2>
+ <p class="mut">새 판은 먼저 한 수집기에서 '시험'하고, 성공률이 그대로이거나 좋아지면 '전체 적용'합니다. 나빠지면 이전 판을 다시 '전체 적용'하면 됩니다.
+ 판마다 성공률은 수집기가 그 판을 쓰는 동안 보낸 기록으로 셉니다.</p>
+ <div id="lbooks"></div></div>
 </section>
 
 <section id="t_orders">
@@ -184,7 +207,7 @@ async function load(first){
     W = {sites: clone(S.sites || d.sites || []), routes: clone(S.routes || d.routes || []), ladder: clone(S.ladder || d.ladder || {levels:{}})};
     drawSites(); drawRouteSites(); drawRoutes(); drawLadder();
   }
-  drawCalls(); drawCollectors(); drawOrders(); drawPrograms(); drawLogs();
+  drawCalls(); drawCollectors(); drawOrders(); drawPrograms(); drawLogs(); drawLearning();
 }
 
 /* ---------- calls ---------- */
@@ -340,6 +363,78 @@ async function saveBundle(){
   const r = await api('/api/admin/bundle', {sites: W.sites, routes: W.routes, ladder: W.ladder});
   dirty = false; ['dirty1','dirty2','dirty3'].forEach(i=>$(i).textContent=''); toast('새 판 '+r.rev+' 저장'); load(true);
 }
+
+/* ---------- learning (학습서) ---------- */
+const BOOKST = {draft:'승인 대기', trial:'시험 중', live:'전체 적용 중', retired:'지난 판', rejected:'버림'};
+let LS = null, ldirty = false;
+function lmark(){ ldirty = true; }
+function drawLearning(){
+  const L = S.learning || {}; if (!L.settings) return;
+  if (!ldirty || !LS) LS = clone(L.settings);
+  const ais = L.ais || {};
+  const opt = sel => Object.entries(ais).map(([k,a])=>`<option value="${k}" ${k===sel?'selected':''}>${esc(a.label)}</option>`).join('');
+  if (document.activeElement !== $('lwriter')) $('lwriter').innerHTML = opt(LS.writer);
+  if (document.activeElement !== $('lreviewer')) $('lreviewer').innerHTML = opt(LS.reviewer);
+  $('lwriter').onchange = e => { LS.writer = e.target.value; lmark(); drawLearning(); };
+  $('lreviewer').onchange = e => { LS.reviewer = e.target.value; lmark(); drawLearning(); };
+  $('lsame').textContent = LS.writer === LS.reviewer ? '참고: 같은 AI가 쓰고 검수하면 자기 실수를 못 볼 수 있습니다.' : '';
+  if (document.activeElement !== $('lauto')) $('lauto').value = LS.auto_after;
+  $('lauto').onchange = e => { LS.auto_after = +e.target.value || 0; lmark(); };
+  if (!$('lais').contains(document.activeElement)) $('lais').innerHTML = Object.entries(ais).map(([k,a]) => {
+    const c = LS.ai[k] || {};
+    const role = [LS.writer===k?'작성':'', LS.reviewer===k?'검수':''].filter(Boolean).join('·');
+    return `<div class="row"><b style="width:70px">${esc(a.label)}</b>${role?`<span class="pill ok">${role}</span>`:''}
+      <select onchange="LS.ai['${k}'].mode=this.value;lmark();drawLearning()">${a.modes.map(m=>`<option value="${m}" ${m===c.mode?'selected':''}>${m==='bot'?'봇':'API'}</option>`).join('')}</select>
+      <input list="lm_${k}" value="${esc(c.model)}" style="width:170px" onchange="LS.ai['${k}'].model=this.value;lmark()">
+      <datalist id="lm_${k}">${a.models.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
+      ${c.mode==='bot'?'<span class="mut">봇 토큰으로 일을 가져감</span>':`${a.has_key?'<span class="pill ok">키 있음</span>':'<span class="pill bad">키 없음</span>'}
+      <input id="lk_${k}" type="password" placeholder="${esc(a.key_env)}" autocomplete="off" style="width:150px">
+      <button class="sm" onclick="saveKey('${k}')">키 저장</button>${a.has_key?`<button class="sm" onclick="if(confirm('키를 지웁니다.'))saveKey('${k}',true)">키 지우기</button>`:''}`}</div>`;
+  }).join('');
+  const busy = new Set((L.jobs||[]).filter(j=>!['ready','failed'].includes(j.status)).map(j=>j.site_id));
+  const siteIds = [...new Set([...(W.sites||[]).map(s=>s.site_id), ...Object.keys(L.sites||{})])];
+  const nm = id => ((W.sites||[]).find(s=>s.site_id===id)||{}).name || id;
+  $('lsites').innerHTML = siteIds.map(id => { const x = (L.sites||{})[id];
+    const live = (L.books||[]).find(b=>b.site_id===id && b.status==='live'), tr = (L.books||[]).find(b=>b.site_id===id && b.status==='trial');
+    return `<div class="row"><b>${esc(nm(id))}</b><span class="mut">${esc(id)}</span>
+      <span class="mut">기록 ${x?x.n:0}건${x&&x.n?' · 성공 '+Math.round(100*x.ok/x.n)+'% · 마지막 '+esc(ago(x.last)):''}</span>
+      ${live?`<span class="pill ok">적용 ${live.version}판</span>`:''}${tr?`<span class="pill wait">시험 ${tr.version}판 (${esc(tr.trial_collector)})</span>`:''}
+      <span style="flex:1"></span>${busy.has(id)?'<span class="pill wait">만드는 중</span>':`<button class="sm go" ${x?'':'disabled'} onclick="buildBook('${esc(id)}')">학습서 만들기</button>`}</div>`; }).join('') || '<p class="mut">사이트 없음</p>';
+  const ainm = k => (ais[k]||{}).label || k;
+  $('ljobs').innerHTML = '<tr><th>때</th><th>사이트</th><th>작성</th><th>검수</th><th>상태</th></tr>' + (L.jobs||[]).map(j=>`<tr><td>${esc(ago(j.updated_at))}</td><td>${esc(nm(j.site_id))}</td><td>${esc(ainm(j.writer))}</td><td>${esc(ainm(j.reviewer))}</td>
+    <td>${j.status==='failed'?`<span class="pill bad">실패</span> <span class="mut">${esc(j.error)}</span>`:`<span class="pill ${j.status==='ready'?'ok':'wait'}">${esc(j.status_text)}</span>`}</td></tr>`).join('');
+  const draft = (L.books||[]).filter(b=>b.status==='draft').length;
+  $('learncount').innerHTML = draft ? '<span class="badge">'+draft+'</span>' : '';
+  const cols = S.collectors.filter(c=>c.status==='approved').map(c=>c.name);
+  const open = new Set([...document.querySelectorAll('#lbooks details[open]')].map(d=>d.dataset.k));
+  if ($('lbooks').contains(document.activeElement)) return;
+  $('lbooks').innerHTML = (L.books||[]).map(b => { const k = b.site_id+'#'+b.version, rv = b.review || {}, res = (((L.sites||{})[b.site_id]||{}).by_version||{})[b.version];
+    return `<details class="card" data-k="${esc(k)}" ${open.has(k)||b.status==='draft'?'open':''}><summary><b>${esc(nm(b.site_id))} ${b.version}판</b>
+      <span class="pill ${b.status==='live'?'ok':b.status==='draft'||b.status==='trial'?'wait':''}">${BOOKST[b.status]||b.status}${b.status==='trial'?' · '+esc(b.trial_collector):''}</span>
+      <span class="mut">작성 ${esc(ainm(b.writer))} · 검수 ${esc(ainm(b.reviewer))} ${rv.verdict==='pass'?'<span class="pill ok">검수 통과</span>':rv.verdict?'<span class="pill bad">검수 지적 있음</span>':''}
+      ${res?' · 이 판 성공 '+Math.round(100*res.ok/res.n)+'% ('+res.n+'건)':''}</span></summary>
+      <p>${esc(b.body.summary)}</p>
+      ${(b.body.changes||[]).length?'<div><b>바뀐 점</b><ul>'+b.body.changes.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul></div>':''}
+      ${(rv.problems||[]).length?'<div class="card alert"><b>검수 지적</b> '+esc(rv.note||'')+'<ul>'+rv.problems.map(p=>'<li>'+esc(p.route_id)+' '+esc(p.step??'')+'단계: '+esc(p.problem)+'</li>').join('')+'</ul></div>':(rv.note?'<p class="mut">검수: '+esc(rv.note)+'</p>':'')}
+      <table><tr><th>경로·단계</th><th>화면</th><th>난이도 → AI</th><th>요령</th><th>대기</th><th>장애 → 대처</th></tr>${b.body.steps.map(s=>`<tr><td>${esc(s.route_id)} ${s.step}</td><td>${esc(s.screen)}</td>
+       <td>${s.difficulty==='easy'?'쉬움 → 1단계(딥시크 등)':'어려움 → 2단계(제미나이 등)'}</td><td>${esc(s.hint)}</td><td>${s.wait_seconds}초</td>
+       <td>${(s.obstacles||[]).map(o=>esc(o.sign)+' → '+esc(o.response)).join('<br>')}</td></tr>`).join('')}</table>
+      <div class="row">${b.status!=='live'?`<select id="lc_${esc(k)}">${cols.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+       <button class="sm" onclick="bookAct('${esc(b.site_id)}',${b.version},'trial')">이 수집기에서 시험</button>
+       <button class="sm go" onclick="bookAct('${esc(b.site_id)}',${b.version},'live')">전체 적용</button>`:''}
+       ${b.status==='draft'?`<button class="sm" onclick="bookAct('${esc(b.site_id)}',${b.version},'reject')">버리기</button>`:''}
+       ${b.status==='trial'?`<button class="sm" onclick="bookAct('${esc(b.site_id)}',${b.version},'retire')">시험 그만</button>`:''}</div></details>`; }).join('') || '<p class="mut">아직 학습서가 없습니다.</p>';
+}
+async function saveLearnSettings(){ if(!LS) return; const r = await api('/api/admin/learning/settings', LS); ldirty=false; toast('학습서 AI 선택을 저장했습니다.'); load(); }
+async function saveKey(k, del){ const v = del ? '' : ($('lk_'+k)||{}).value||''; if(!del && !v.trim()) return toast('키를 넣으십시오.');
+  await api('/api/admin/learning/key', {ai:k, key:v}); toast(del?'키를 지웠습니다.':'키를 저장했습니다.'); load(); }
+async function buildBook(id){ if(ldirty) return toast('먼저 AI 선택을 저장하십시오.');
+  const r = await api('/api/admin/learning/build', {site_id:id}); toast('학습서 만들기 시작'); load(); }
+async function bookAct(site_id, version, action){
+  const words = {trial:'이 판을 고른 수집기 한 대에서 시험합니다.', live:'이 판을 모든 수집기에 적용합니다. 지금 적용 중인 판은 지난 판이 됩니다.', reject:'이 판을 버립니다.', retire:'시험을 그만둡니다.'};
+  if (!confirm(words[action])) return;
+  const b = {site_id, version, action}; if (action==='trial') { const e=$('lc_'+site_id+'#'+version); b.collector = e && e.value; if(!b.collector) return toast('승인된 수집기가 없습니다.'); }
+  await api('/api/admin/learning/book', b); toast('처리했습니다.'); load(); }
 
 /* ---------- orders / updates / logs ---------- */
 function drawOrders(){ $('orders').innerHTML = '<tr><th>때</th><th>수집기</th><th>상태</th><th>내용</th></tr>' + S.instructions.map(o=>{let b={};try{b=JSON.parse(o.body)}catch(e){}

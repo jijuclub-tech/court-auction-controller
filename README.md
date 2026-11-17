@@ -40,12 +40,12 @@ SQLite DB(`controller.db`)에 상태가 자동 저장됩니다.
 
 ---
 
-## 우분투에 설치 (S-0.1.1-CONTROL)
+## 우분투에 설치 (S-0.1.2-CONTROL)
 
 우분투 서버 터미널에서 한 줄:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/claude/controller-S010-control-20261117/install/install_controller.sh | sudo bash
+wget -qO- https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/claude/controller-S012-learning-20261117/install/install_controller.sh | sudo bash
 ```
 
 - 처음 설치 때 관리인 화면 암호(12자 이상)를 두 번 묻습니다. 화면에 보이지 않고 `/etc/court-auction-controller/controller.env`(root만 읽기)에만 저장됩니다.
@@ -55,6 +55,21 @@ wget -qO- https://raw.githubusercontent.com/jijuclub-tech/court-auction-controll
 - 지우기: `sudo /opt/bidguard/court-auction-controller/uninstall_controller.sh` (자료까지 `--purge`).
 
 관리인 화면 탭: 호출(화면 사진에서 클릭 지정·아이디/암호/보안문자 입력·건너뛰기·정지, 소리 알림) · 수집기(승인·차단·토큰·실시간 상태) · 메뉴(자주가는/기타 사이트) · 정해진 경로(단계·시작 AI 단계·실행기) · AI 단계(1~4단계 업체·모델) · 지시서 · 프로그램 갱신(묶음 올리기·승인) · 기록.
+
+## S-0.1.2-CONTROL (2026-11-17) — 학습서
+
+관제기가 '일을 나눠 주는 곳'에서 '배워서 다음 지시를 고쳐 주는 곳'이 되도록 학습서를 더했습니다. 기존 기능은 그대로입니다.
+
+1. 수집기가 다녀온 화면 기록을 보냅니다 (`POST /api/collector/experience`). 길 찾는 방법만 남기고 입력 글자·암호·사진은 버립니다.
+2. 관제기가 경로 단계별로 성공률·시간·자주 나는 실패를 셉니다 (AI 안 씀).
+3. **작성 AI**(기본: 글록 봇)가 사이트별 학습서를 쓰고, **검수 AI**(기본: 쳇GPT)가 문제만 지적합니다.
+   관리인 화면 '학습서' 탭에서 둘 다 글록·쳇GPT·제미나이·클로드·딥시크 중에서 고릅니다.
+4. 관리인이 한 수집기에서 시험 → 전체 적용. 나빠지면 이전 판을 다시 전체 적용.
+5. 수집기가 사이트에 들어갈 때 알리면 (`POST /api/collector/visit`) 최신 학습서를 받습니다.
+   단계마다 쉬움 → 1단계(딥시크 등), 어려움 → 2단계(제미나이 등)부터 AI를 씁니다.
+
+API 키: 관리인 화면에서 넣거나 `controller.env`에 `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`.
+글록 봇은 `CONTROLLER_BOT_TOKEN`으로 `GET /api/bot/learning`에서 일을 가져갑니다. 자세한 주소 약속: `docs/LEARNING_PROTOCOL.md`.
 
 ## S-0.1.0-CONTROL (2026-11-17) — 관제형 수집기와 짝을 이루는 관제기
 

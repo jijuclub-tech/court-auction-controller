@@ -14,8 +14,8 @@
 # Needs: Ubuntu with python3 (3.8 or later; Ubuntu 22.04/24.04 have it). No packages are installed.
 set -euo pipefail
 
-VERSION="S-0.1.1-CONTROL"
-BRANCH="${BRANCH:-claude/controller-S010-control-20261117}"
+VERSION="S-0.1.2-CONTROL"
+BRANCH="${BRANCH:-claude/controller-S012-learning-20261117}"
 RAW="https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/${BRANCH}"
 APP="/opt/bidguard/court-auction-controller"
 DATA="/var/lib/court-auction-controller"
@@ -24,7 +24,7 @@ ENVF="${ETC}/controller.env"
 UNIT="/etc/systemd/system/court-auction-controller.service"
 SVC_USER="bidguard-ctl"
 PORT="${PORT:-8770}"
-FILES="controller.py admin.html collector_defaults.json install/uninstall_controller.sh"
+FILES="controller.py learning.py admin.html collector_defaults.json install/uninstall_controller.sh"
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf '\n[중단] %s\n' "$*" >&2; exit 1; }

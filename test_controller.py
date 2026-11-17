@@ -177,6 +177,113 @@ class ControllerTests(unittest.TestCase):
         self.assertIn("관리인 호출", html)
         self.assertIn("정해진 경로", html)
 
+    # ---- 학습서 (S-0.1.2) ----
+    def _wait_job(self, site, statuses, tries=50):
+        import time
+        for _ in range(tries):
+            jobs = [j for j in self.admin("/api/admin/state")[1]["learning"]["jobs"] if j["site_id"] == site]
+            if jobs and jobs[0]["status"] in statuses:
+                return jobs[0]
+            time.sleep(0.1)
+        self.fail("job did not reach %s: %s" % (statuses, jobs))
+
+    def test_11_learning_defaults_and_experience_privacy(self):
+        st = self.admin("/api/admin/state")[1]["learning"]
+        self.assertEqual(st["settings"]["writer"], "grok")          # 관리인 지시: 글록 봇 기본
+        self.assertEqual(st["settings"]["ai"]["grok"]["mode"], "bot")
+        self.assertEqual(sorted(st["ais"]), ["chatgpt", "claude", "deepseek", "gemini", "grok"])
+        self.register("learn01")
+        rec = {"site_id": "courtauction", "route_id": "court_appraisal", "step": 1, "screen": "메인", "action": "click",
+               "x": 10, "y": 5, "result": "ok", "seconds": 2.5, "level": 1, "ai": "deepseek",
+               "text": "secret-password", "password": "pw", "image_jpeg_b64": "AAAA"}
+        code, d = self.call("/api/collector/experience", {"name": "learn01", "records": [rec] * 6})
+        self.assertEqual((code, d["stored"]), (200, 6))
+        import sqlite3
+        con = sqlite3.connect(os.path.join(self.tmp.name, "controller.db"))
+        dump = "\n".join(con.iterdump())
+        self.assertNotIn("secret-password", dump)
+        self.assertNotIn("AAAA", dump)
+        self.assertEqual(self.call("/api/collector/experience", {"name": "nobody", "records": [rec]})[0], 403)
+        self.assertEqual(self.call("/api/collector/experience", {"name": "learn01", "records": [dict(rec, result="maybe")]})[0], 400)
+        # no book yet
+        self.assertIsNone(self.call("/api/collector/visit", {"name": "learn01", "site_id": "courtauction"})[1]["book"])
+
+    def test_12_grok_bot_writes_chatgpt_reviews_then_trial_and_live(self):
+        self.register("learn02")
+        self.register("learn03")
+        recs = [{"site_id": "iros", "route_id": "r1", "step": 1, "result": "ok", "level": 1, "action": "CLICK"}] * 5 + \
+               [{"site_id": "iros", "route_id": "r1", "step": 2, "result": "fail", "level": 2, "popup": "알림창이 이름을 가림"}] * 3
+        self.call("/api/collector/experience", {"name": "learn02", "records": recs})
+        reviewed = []
+        def fake_ai(ai, model, system, user):
+            reviewed.append(ai)
+            return {"verdict": "fix", "problems": [{"route_id": "r1", "step": 2, "problem": "대기 시간 짧음"}], "note": "n"}
+        self.c.learning.CALL_AI = fake_ai
+        self.assertEqual(self.admin("/api/admin/learning/build", {"site_id": "iros"})[0], 200)
+        self.assertEqual(self.admin("/api/admin/learning/build", {"site_id": "iros"})[0], 400)   # already running
+        self.assertEqual(self.call("/api/bot/learning", headers={"X-Bot-Token": "no"})[0], 403)
+        jobs = self.call("/api/bot/learning", headers={"X-Bot-Token": "bot"})[1]["jobs"]
+        job = [j for j in jobs if j["site_id"] == "iros"][0]
+        self.assertEqual(job["stage"], "write")
+        st = {s["step"]: s for s in job["input"]["step_stats"]}
+        self.assertEqual(st[1]["suggested"], "easy")
+        self.assertEqual(st[2]["problems"], {"알림창이 이름을 가림": 3})
+        draft = {"summary": "s", "changes": ["c"], "steps": [
+            {"route_id": "r1", "step": 1, "screen": "a", "difficulty": "easy", "hint": "h", "wait_seconds": 2},
+            {"route_id": "r1", "step": 2, "screen": "b", "difficulty": "hard", "hint": "h", "wait_seconds": 5,
+             "obstacles": [{"sign": "알림창", "response": "닫기 먼저"}]}]}
+        self.assertEqual(self.call("/api/bot/learning/" + job["id"], {"stage": "review", "result": {}},
+                                   {"X-Bot-Token": "bot"})[0], 403)    # reviewer is ChatGPT, not the bot
+        self.assertEqual(self.call("/api/bot/learning/" + job["id"], {"stage": "write", "result": draft},
+                                   {"X-Bot-Token": "bot"})[0], 200)
+        self._wait_job("iros", ("ready",))
+        self.assertEqual(reviewed, ["chatgpt"])
+        books = [b for b in self.admin("/api/admin/state")[1]["learning"]["books"] if b["site_id"] == "iros"]
+        self.assertEqual((books[0]["version"], books[0]["status"], books[0]["review"]["verdict"]), (1, "draft", "fix"))
+        self.assertEqual(books[0]["body"]["steps"][0]["start_level"], 1)
+        self.assertEqual(books[0]["body"]["steps"][1]["start_level"], 2)
+        # draft is not sent
+        self.assertIsNone(self.call("/api/collector/visit", {"name": "learn02", "site_id": "iros"})[1]["book"])
+        # trial on learn02 only
+        self.assertEqual(self.admin("/api/admin/learning/book", {"site_id": "iros", "version": 1, "action": "trial",
+                                                                 "collector": "learn02"})[0], 200)
+        v = self.call("/api/collector/visit", {"name": "learn02", "site_id": "iros"})[1]
+        self.assertEqual((v["version"], v["trial"]), (1, True))
+        self.assertIsNone(self.call("/api/collector/visit", {"name": "learn03", "site_id": "iros"})[1]["book"])
+        # live for all; same version -> unchanged
+        self.admin("/api/admin/learning/book", {"site_id": "iros", "version": 1, "action": "live"})
+        v = self.call("/api/collector/visit", {"name": "learn03", "site_id": "iros", "version": 1})[1]
+        self.assertTrue(v.get("unchanged"))
+        self.assertNotIn("book", v)
+
+    def test_13_choose_any_of_five_ais_and_api_failure_is_shown(self):
+        r = self.admin("/api/admin/learning/settings", {"writer": "claude", "reviewer": "deepseek",
+                                                        "ai": {"claude": {"model": "claude-opus-4-1"}}})
+        self.assertEqual(r[0], 200)
+        self.assertEqual(self.admin("/api/admin/learning/settings", {"writer": "nobody"})[0], 400)
+        self.assertEqual(self.admin("/api/admin/learning/settings", {"ai": {"chatgpt": {"mode": "bot"}}})[0], 400)
+        # key is stored (owner-only file) and never shown
+        self.assertEqual(self.admin("/api/admin/learning/key", {"ai": "claude", "key": "sk-test-xyz"})[1]["has_key"], True)
+        st = self.admin("/api/admin/state")[1]
+        self.assertNotIn("sk-test-xyz", json.dumps(st))
+        self.assertEqual(oct(os.stat(os.path.join(self.tmp.name, "ai_keys.json")).st_mode & 0o777), "0o600")
+        self.register("learn04")
+        self.call("/api/collector/experience", {"name": "learn04", "records": [{"site_id": "onbid", "result": "ok"}]})
+        calls = []
+        def boom(ai, model, system, user):
+            calls.append((ai, model))
+            raise RuntimeError("quota")
+        self.c.learning.CALL_AI = boom
+        self.admin("/api/admin/learning/build", {"site_id": "onbid"})
+        j = self._wait_job("onbid", ("failed",))
+        self.assertIn("quota", j["error"])
+        self.assertEqual(calls, [("claude", "claude-opus-4-1")])
+        self.admin("/api/admin/learning/settings", {"writer": "grok", "reviewer": "chatgpt"})
+
+    def test_14_admin_page_has_learning_tab(self):
+        with urlopen(self.base + "/admin") as r:
+            self.assertIn("학습서", r.read().decode())
+
 
 if __name__ == "__main__":
     unittest.main()

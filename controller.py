@@ -42,7 +42,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
-VERSION = "S-0.1.1-CONTROL"
+import learning
+
+VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
@@ -113,6 +115,9 @@ def init():
             con.execute("INSERT INTO kv VALUES('policy',?)", (json.dumps(DEFAULT_POLICY, ensure_ascii=False),))
         if con.execute("SELECT 1 FROM kv WHERE k='rev'").fetchone() is None:
             con.execute("INSERT INTO kv VALUES('rev','0')")
+    learning.bind(db, kv_get, kv_set, audit, now, DATA)
+    with db() as con:
+        learning.init(con)
 
 
 def kv_get(con, k, default=None):
@@ -299,6 +304,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._updates(q)
         if p.startswith("/api/collector/update_file/") and method == "GET":
             return self._update_file(p.rsplit("/", 1)[1], q)
+        if learning.route(self, method, p, q):      # 학습서: experience / visit / Grok bot
+            return
         if p in ("/api/ladder/ask", "/api/escalations") and method == "POST":
             return self._new_call("ask" if p == "/api/ladder/ask" else "escalation", self._body())
         m = re.fullmatch(r"/api/(ladder/ask|escalations)/([A-Za-z0-9]+)", p)
@@ -525,12 +532,15 @@ class Handler(BaseHTTPRequestHandler):
                     "policy": kv_get(con, "policy"),
                     "defaults": COLLECTOR_DEFAULTS,
                     "audit": [dict(r) for r in con.execute("SELECT at,who,what FROM audit ORDER BY id DESC LIMIT 40")],
-                    "programs": [dict(r) for r in con.execute("SELECT * FROM programs ORDER BY created_at DESC, rowid DESC")]})
+                    "programs": [dict(r) for r in con.execute("SELECT * FROM programs ORDER BY created_at DESC, rowid DESC")],
+                    "learning": learning.admin_state(con)})
         if method != "POST":
             return self._json(404, {"ok": False})
         if p == "/api/admin/program_upload":
             return self._program_upload(q)
         b = self._body()
+        if learning.admin_route(self, method, p, q, b):
+            return
         if p == "/api/admin/collector":
             name = str(b.get("name") or "")[:60]
             status = b.get("status", "approved")
