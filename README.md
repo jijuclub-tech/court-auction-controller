@@ -40,6 +40,22 @@ SQLite DB(`controller.db`)에 상태가 자동 저장됩니다.
 
 ---
 
+## 우분투에 설치 (S-0.1.1-CONTROL)
+
+우분투 서버 터미널에서 한 줄:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/claude/controller-S010-control-20261117/install/install_controller.sh | sudo bash
+```
+
+- 처음 설치 때 관리인 화면 암호(12자 이상)를 두 번 묻습니다. 화면에 보이지 않고 `/etc/court-auction-controller/controller.env`(root만 읽기)에만 저장됩니다.
+- 프로그램: `/opt/bidguard/court-auction-controller`, 자료: `/var/lib/court-auction-controller`, 서비스: `court-auction-controller` (부팅 때 자동 시작, 죽으면 다시 켬), 포트 8770.
+- 다시 실행하면 프로그램만 바꾸고 자료·설정은 그대로 씁니다. 예전 Node 관제센터(`/opt/bidguard/control-center`, 8787)는 건드리지 않습니다.
+- 휴대폰 호출 주소(`NOTIFY_URL`), 관제기 자체 AI(`CONTROLLER_AI`, `GEMINI_API_KEY`)는 설정 파일에서 넣고 `sudo systemctl restart court-auction-controller`.
+- 지우기: `sudo /opt/bidguard/court-auction-controller/uninstall_controller.sh` (자료까지 `--purge`).
+
+관리인 화면 탭: 호출(화면 사진에서 클릭 지정·아이디/암호/보안문자 입력·건너뛰기·정지, 소리 알림) · 수집기(승인·차단·토큰·실시간 상태) · 메뉴(자주가는/기타 사이트) · 정해진 경로(단계·시작 AI 단계·실행기) · AI 단계(1~4단계 업체·모델) · 지시서 · 프로그램 갱신(묶음 올리기·승인) · 기록.
+
 ## S-0.1.0-CONTROL (2026-11-17) — 관제형 수집기와 짝을 이루는 관제기
 
 `controller.py` 하나로 돕니다. 파이썬 3 기본 기능만 쓰므로 따로 설치할 꾸러미가 없습니다.

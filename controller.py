@@ -42,7 +42,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
-VERSION = "S-0.1.0-CONTROL"
+VERSION = "S-0.1.1-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
@@ -53,6 +53,7 @@ NOTIFY_URL = os.environ.get("NOTIFY_URL", "")                  # BIDGUARD call c
 PUBLIC_URL = os.environ.get("CONTROLLER_PUBLIC_URL", "")       # link put into phone notices
 CONTROLLER_AI = os.environ.get("CONTROLLER_AI", "")            # e.g. gemini:gemini-2.5-pro
 MAX_BODY = 6 * 1024 * 1024
+MAX_PACKAGE = 300 * 1024 * 1024                                  # program package upload
 CAP = 100                                                      # rows kept per topic (t451u)
 SAFE_FILE = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
 SECURITY = ("captcha", "recaptcha", "puzzle", "조각그림", "로봇", "robot", "보안문자", "자동입력방지")
@@ -387,7 +388,7 @@ class Handler(BaseHTTPRequestHandler):
                     # 보급형에는 관제기 단계를 보내지 않음
                     lv = out["ladder"].get("levels", {})
                     lv["3"] = [x for x in lv.get("3", []) if x.get("kind") != "controller"]
-            pr = con.execute("SELECT * FROM programs WHERE approved=1 ORDER BY created_at DESC LIMIT 1").fetchone()
+            pr = con.execute("SELECT * FROM programs WHERE approved=1 ORDER BY created_at DESC, rowid DESC LIMIT 1").fetchone()
             if pr:
                 out["program"] = {"version": pr["version"], "file": pr["file"], "sha256": pr["sha256"], "approved": True}
         return self._json(200, out)
@@ -522,9 +523,13 @@ class Handler(BaseHTTPRequestHandler):
                     "reports": [dict(r) for r in con.execute("SELECT id,name,at,case_no,task_type,success,needs_human FROM reports ORDER BY id DESC LIMIT 30")],
                     "sites": kv_get(con, "sites"), "routes": kv_get(con, "routes"), "ladder": kv_get(con, "ladder"),
                     "policy": kv_get(con, "policy"),
-                    "programs": [dict(r) for r in con.execute("SELECT * FROM programs ORDER BY created_at DESC")]})
+                    "defaults": COLLECTOR_DEFAULTS,
+                    "audit": [dict(r) for r in con.execute("SELECT at,who,what FROM audit ORDER BY id DESC LIMIT 40")],
+                    "programs": [dict(r) for r in con.execute("SELECT * FROM programs ORDER BY created_at DESC, rowid DESC")]})
         if method != "POST":
             return self._json(404, {"ok": False})
+        if p == "/api/admin/program_upload":
+            return self._program_upload(q)
         b = self._body()
         if p == "/api/admin/collector":
             name = str(b.get("name") or "")[:60]
@@ -582,6 +587,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "sha256": digest})
         return self._json(404, {"ok": False})
 
+    def _program_upload(self, q):
+        """Raw package body (application/octet-stream). Stored, hashed, approved only if asked."""
+        fname, ver = q.get("file", ""), q.get("version", "")
+        if not SAFE_FILE.match(fname) or not ver:
+            raise ValueError("file (letters, digits, . _ -) and version required")
+        n = int(self.headers.get("Content-Length") or 0)
+        if not 0 < n <= MAX_PACKAGE:
+            raise ValueError("package size 1 byte .. 300 MB")
+        tmp = UPDATES / (fname + ".part")
+        h = hashlib.sha256()
+        with open(tmp, "wb") as f:
+            left = n
+            while left:
+                chunk = self.rfile.read(min(1 << 20, left))
+                if not chunk:
+                    raise ValueError("upload cut off")
+                f.write(chunk)
+                h.update(chunk)
+                left -= len(chunk)
+        tmp.replace(UPDATES / fname)
+        digest = h.hexdigest()
+        approved = 1 if q.get("approved") in ("1", "true") else 0
+        with db() as con:
+            con.execute("INSERT INTO programs VALUES(?,?,?,?,?) ON CONFLICT(version) DO UPDATE SET "
+                        "file=excluded.file, sha256=excluded.sha256, approved=excluded.approved",
+                        (ver[:60], fname, digest, approved, now()))
+            audit(con, "manager", "program upload %s %s approved=%s" % (ver, fname, bool(approved)))
+        return self._json(200, {"ok": True, "sha256": digest, "bytes": n})
+
     def _page(self):
         data = ADMIN_PAGE.encode()
         self.send_response(200)
@@ -592,81 +626,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-ADMIN_PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>관제기</title>
-<style>
-body{font-family:system-ui,'Malgun Gothic',sans-serif;margin:0;background:#f8fafc;color:#0f172a}
-header{background:#0f172a;color:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-main{padding:10px;max-width:1100px;margin:auto} section{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin:10px 0}
-h2{font-size:16px;margin:4px 0 8px} table{border-collapse:collapse;width:100%;font-size:13px} td,th{border-bottom:1px solid #eee;padding:4px;text-align:left}
-.call{border:1px solid #fca5a5;background:#fff7f7;border-radius:8px;padding:8px;margin:8px 0}
-.call img{max-width:100%;cursor:crosshair;border:1px solid #ccc} button{padding:6px 10px;margin:2px;border-radius:6px;border:1px solid #94a3b8;background:#fff}
-button.main{background:#166534;color:#fff;border-color:#166534} textarea{width:100%;font-family:monospace;font-size:12px}
-.muted{color:#64748b;font-size:12px} input{padding:5px}
-</style></head><body>
-<header><b>법원경매 관제기</b><span id="ver" class="muted"></span>
-<input id="tok" type="password" placeholder="관리인 토큰" size="18"><button onclick="saveTok()">열기</button>
-<span id="msg"></span></header>
-<main>
-<section><h2>관리인 호출 · 관제기 질문 (대기 중)</h2>
-<p class="muted">화면을 누르면 그 자리를 클릭하라는 답이 됩니다. 아이디·암호·보안문자 답은 '글자 입력'으로 보냅니다(관제기에 저장되지 않음).</p>
-<div id="calls"></div></section>
-<section><h2>수집기</h2><table id="cols"></table>
-<p><input id="newname" placeholder="수집기 이름"><select id="newtype"><option value="control">관제형</option><option value="supply">보급형</option></select>
-<button onclick="approve(document.getElementById('newname').value,'approved',document.getElementById('newtype').value)">등록 승인</button></p></section>
-<section><h2>지시서 보내기 (기존 관제형 지시)</h2>
-<input id="iname" placeholder="수집기"><input id="itype" placeholder="작업 유형 (예: 감정평가서)">
-<input id="icases" placeholder="사건번호, 쉼표로" size="40"><button onclick="sendInst()">보내기</button></section>
-<section><h2>메뉴 · 정해진 경로 · AI 단계 (판 <span id="rev"></span>)</h2>
-<p class="muted">sites: [{site_id,name,url,group:"frequent"|"other",note}] · routes: [{route_id,site_id,name,priority,steps:[{goal,start_level}]}] · ladder: {levels:{"1":[...],...}}. 저장하면 판이 올라가고, 수집기는 다음 점검 때 받습니다.</p>
-<b>sites</b><textarea id="sites" rows="6"></textarea><b>routes</b><textarea id="routes" rows="8"></textarea>
-<b>ladder</b><textarea id="ladder" rows="8"></textarea><button class="main" onclick="saveBundle()">저장 (새 판)</button></section>
-<section><h2>최근 결과 보고</h2><table id="reps"></table></section>
-</main>
-<script>
-let T=sessionStorage.getItem('ctok')||'';document.getElementById('tok').value=T;
-function saveTok(){T=document.getElementById('tok').value;sessionStorage.setItem('ctok',T);load();}
-async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Admin-Token':T},body:body?JSON.stringify(body):undefined});
- const j=await r.json().catch(()=>({}));if(!r.ok){msg('오류: '+(j.error||r.status));throw new Error('x')}return j;}
-function msg(t){document.getElementById('msg').textContent=t;setTimeout(()=>document.getElementById('msg').textContent='',4000)}
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function load(){if(!T)return;const s=await api('/api/admin/state');
- document.getElementById('ver').textContent=s.version;document.getElementById('rev').textContent=s.rev;
- const pend=s.calls.filter(c=>c.status==='pending');
- document.getElementById('calls').innerHTML=pend.length?pend.map(callHtml).join(''):'<p class="muted">대기 중인 호출 없음</p>';
- document.getElementById('cols').innerHTML='<tr><th>이름</th><th>유형</th><th>상태</th><th>마지막</th><th>판</th><th>지금</th><th></th></tr>'+
-  s.collectors.map(c=>{let st={};try{st=JSON.parse(c.last_state)}catch(e){}
-  return `<tr><td>${esc(c.name)}</td><td>${c.type==='supply'?'보급형':'관제형'}</td><td>${esc(c.status)}</td><td>${esc((c.last_seen||'').slice(5,19))}</td><td>${esc(c.version)}</td><td>${esc(st.state||'')} ${esc(st.route||'')} ${st.step?esc(st.step)+'단계':''}</td>
-  <td>${c.status!=='approved'?`<button onclick="approve('${esc(c.name)}','approved')">승인</button>`:`<button onclick="approve('${esc(c.name)}','blocked')">차단</button>`}</td></tr>`}).join('');
- document.getElementById('reps').innerHTML=s.reports.map(r=>`<tr><td>${esc(r.at.slice(5,19))}</td><td>${esc(r.name)}</td><td>${esc(r.case_no)}</td><td>${esc(r.task_type)}</td><td>${r.success?'성공':(r.needs_human?'사람 필요':'실패')}</td></tr>`).join('');
- for(const k of ['sites','routes','ladder']){const el=document.getElementById(k);if(document.activeElement!==el)el.value=s[k]?JSON.stringify(s[k],null,1):'';}
-}
-function callHtml(c){const who=c.kind==='ask'?'3단계 관제기 질문':'4단계 관리인 호출'+(c.phone?' (휴대폰)':'');
- return `<div class="call" id="c_${c.id}"><b>${who}</b> · ${esc(c.name)} · ${esc(c.created_at.slice(5,19))}<br>
- <b>문제:</b> ${esc(c.reason)}<br><b>단계:</b> ${esc(c.goal)}<br>
- ${c.image_jpeg_b64?`<img src="data:image/jpeg;base64,${c.image_jpeg_b64}" onclick="clickAt(event,'${c.id}',${c.map_w},${c.map_h})"><br>`:''}
- <span class="muted">클릭 위치: <span id="xy_${c.id}">-</span></span><br>
- <button class="main" onclick="sendClick('${c.id}')">이 자리 클릭</button>
- <input id="tx_${c.id}" type="password" placeholder="아이디·암호·보안문자 답" maxlength="64"><button onclick="sendType('${c.id}')">글자 입력</button>
- <button onclick="answer('${c.id}',{decision:'retry'})">다시 1단계부터</button><button onclick="answer('${c.id}',{decision:'skip'})">이 단계 건너뛰기</button>
- <button onclick="answer('${c.id}',{decision:'human'})">현장에서 처리</button><button onclick="answer('${c.id}',{decision:'stop'})">정지</button>
- ${c.kind==='ask'?`<button onclick="answer('${c.id}',{decision:'escalate'})">관리인에게 넘김</button>`:''}</div>`}
-const picks={};
-function clickAt(e,id,mw,mh){const im=e.target,r=im.getBoundingClientRect();
- const x=Math.floor((e.clientX-r.left)/r.width*mw),y=Math.floor((e.clientY-r.top)/r.height*mh);picks[id]={x,y};
- document.getElementById('xy_'+id).textContent=x+', '+y+' (10:1 격자)';}
-async function sendClick(id){if(!picks[id])return msg('먼저 화면을 누르십시오');
- await answer(id,{decision:'action',action:{action:'CLICK',x:picks[id].x,y:picks[id].y,reason:'관리인 지정'}});}
-async function sendType(id){const el=document.getElementById('tx_'+id);if(!el.value)return;const t=el.value;el.value='';
- await answer(id,{decision:'type',text:t});}
-async function answer(id,b){await api('/api/admin/answer/'+id,b);msg('보냄');load();}
-async function approve(name,status,type){if(!name)return;await api('/api/admin/collector',{name,status,type});load();}
-async function sendInst(){const cases=document.getElementById('icases').value.split(',').map(s=>s.trim()).filter(Boolean);
- await api('/api/admin/instruction',{name:document.getElementById('iname').value,task_type:document.getElementById('itype').value,cases});msg('지시서 보냄');}
-async function saveBundle(){const b={};for(const k of ['sites','routes','ladder']){const v=document.getElementById(k).value.trim();if(v){try{b[k]=JSON.parse(v)}catch(e){return msg(k+' JSON 오류')}}}
- const r=await api('/api/admin/bundle',b);msg('새 판 '+r.rev);load();}
-load();setInterval(load,5000);
-</script></body></html>"""
+HERE = Path(__file__).resolve().parent
+
+
+def _load(name, default):
+    try:
+        return (HERE / name).read_text(encoding="utf-8")
+    except OSError:
+        return default
+
+
+ADMIN_PAGE = _load("admin.html", "<!doctype html><meta charset=utf-8><p>admin.html 이 없습니다. 설치 폴더를 확인하십시오.</p>")
+try:
+    COLLECTOR_DEFAULTS = json.loads(_load("collector_defaults.json", "{}"))
+except ValueError:
+    COLLECTOR_DEFAULTS = {}
 
 
 def main():

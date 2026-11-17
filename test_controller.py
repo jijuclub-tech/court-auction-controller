@@ -153,10 +153,29 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.call("/api/collector/instruction/t1")[0], 403)
         self.assertEqual(self.call("/api/collector/instruction/t1", headers={"X-Collector-Token": "abc"})[0], 200)
 
+    def test_10_program_upload_and_defaults(self):
+        req = Request(self.base + "/api/admin/program_upload?file=pkg_S0332.zip&version=S-0.3.32-CONTROL&approved=1",
+                      data=b"PK zip bytes", headers={"X-Admin-Token": "adm", "Content-Type": "application/octet-stream"},
+                      method="POST")
+        with urlopen(req) as r:
+            d = json.loads(r.read())
+        self.assertEqual(d["bytes"], 12)
+        self.register("u1")
+        self.assertEqual(self.call("/api/collector/updates?name=u1&rev=x")[1]["program"]["file"], "pkg_S0332.zip")
+        bad = Request(self.base + "/api/admin/program_upload?file=../x&version=v", data=b"x",
+                      headers={"X-Admin-Token": "adm"}, method="POST")
+        with self.assertRaises(HTTPError):
+            urlopen(bad)
+        st = self.admin("/api/admin/state")[1]
+        self.assertIn("courtauction", [x["site_id"] for x in st["defaults"]["sites"]])
+        self.assertEqual(st["defaults"]["ladder"]["levels"]["3"][0]["kind"], "controller")
+        self.assertTrue(st["audit"])
+
     def test_09_admin_page(self):
         with urlopen(self.base + "/admin") as r:
             html = r.read().decode()
         self.assertIn("관리인 호출", html)
+        self.assertIn("정해진 경로", html)
 
 
 if __name__ == "__main__":
