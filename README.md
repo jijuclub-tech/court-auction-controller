@@ -37,3 +37,53 @@ SQLite DB(`controller.db`)에 상태가 자동 저장됩니다.
 2. 사이트 맵 상세화
 3. 웹 대시보드 (FastAPI)
 4. 일일/월간 목표 자동 산출 로직 강화
+
+---
+
+## S-0.1.0-CONTROL (2026-11-17) — 관제형 수집기와 짝을 이루는 관제기
+
+`controller.py` 하나로 돕니다. 파이썬 3 기본 기능만 쓰므로 따로 설치할 꾸러미가 없습니다.
+
+```bash
+export CONTROLLER_ADMIN_TOKEN='관리인만 아는 긴 글자'
+export CONTROLLER_PUBLIC_URL='http://관제기주소:8770'      # 휴대폰 알림에 넣을 링크 (선택)
+export NOTIFY_URL='BIDGUARD 호출 통로 주소'                # 휴대폰 호출 (선택)
+export CONTROLLER_BOT_TOKEN='글록 봇용 글자'               # 3단계 질문에 글록 봇이 답할 때 (선택)
+export CONTROLLER_AI='gemini:gemini-2.5-pro'               # 3단계에서 관제기 자체 AI (선택, GEMINI_API_KEY 필요)
+python3 controller.py --host 0.0.0.0 --port 8770
+```
+
+관리인 화면: `http://관제기주소:8770/admin` (휴대폰에서도 열림, BIDGUARD 관리자 메뉴에 이 주소를 넣어 볼 수 있음)
+
+### AI 단계 (관리인 지시 2026-11-17)
+| 단계 | 누가 | 비고 |
+|---|---|---|
+| 1 | 로컬 Ollama, 딥시크 | 수집기 PC에서 |
+| 2 | 하위 AI (업체·모델 선택) | 수집기 PC에서 |
+| 3 | **관제기 (기본)**, 글록 봇, 사용자, 쳇GPT, 클로드, 상위 모델 | 보급형은 관제기 단계가 빠짐. **관제기와 연결이 안 되면 바로 4단계** |
+| 4 | **관리인 (최종)** | 현장에 없으면 원격 호출(휴대폰 옵션): 화면 이미지, 클릭 지정, 아이디·암호·보안문자 입력, 건너뛰기, 정지 |
+
+### 주소
+기존 수집기가 이미 부르는 주소 (그대로):
+- `POST /api/collector/connect` — 처음 보는 수집기는 "등록 대기", 관리인이 /admin에서 승인
+- `GET /api/policy`, `GET /api/collector/instruction/<이름>`, `POST /api/collector/report`
+
+새로 더한 주소:
+- `GET /api/health` — 수집기가 수집 사이사이 점검
+- `POST /api/collector/heartbeat` — 수집기 현재 상태(경로·단계)
+- `GET /api/collector/updates?name=&rev=` — 메뉴(자주가는 사이트/기타 사이트)·정해진 경로·AI 단계 설정·승인된 새 프로그램
+- `GET /api/collector/update_file/<파일>` — 승인된 프로그램 꾸러미 (수집기는 SHA-256 확인 후 받아 두기만, 설치는 관리인)
+- `POST /api/ladder/ask`, `GET /api/ladder/ask/<id>` — 3단계 관제기 질문
+- `POST /api/escalations`, `GET /api/escalations/<id>` — 4단계 관리인 호출
+- 관리인(`X-Admin-Token`): `/api/admin/state`, `/api/admin/collector`, `/api/admin/answer/<id>`, `/api/admin/bundle`, `/api/admin/instruction`, `/api/admin/program`, `/api/admin/policy`
+- 글록 봇(`X-Bot-Token`): `/api/bot/asks`, `/api/bot/answer/<id>` — 3단계 질문만 답할 수 있음 (4단계는 관리인 전용)
+
+### 비밀
+- 관리인이 원격으로 넣은 아이디·암호·보안문자 답은 **메모리에만** 두었다가 수집기가 한 번 가져가면 지웁니다. DB·기록에 남지 않습니다 (시험으로 확인).
+- 화면 사진은 `controller_data/shots`에 두고 수집기가 답을 가져가면 지웁니다. 호출 기록은 100건까지만 둡니다.
+
+### 시험
+```bash
+python3 -m pytest -q test_controller.py
+```
+GitHub Actions는 쓰지 않습니다.
