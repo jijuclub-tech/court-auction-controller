@@ -1,5 +1,5 @@
 {
- "_note": "Generated from court-auction-collector-new standalone_collector/control/defaults.py (S-0.3.30-CONTROL). Keep in step with the collector.",
+ "_note": "Generated from court-auction-collector-new standalone_collector/control/defaults.py (S-0.3.31-CONTROL). Keep in step with the collector. DeepSeek (level 1) is on: Windows collectors feed it the built-in OCR text; collectors without OCR pass it.",
  "sites": [
   {
    "site_id": "courtauction",
@@ -116,7 +116,7 @@
      "kind": "deepseek",
      "model": "deepseek-chat",
      "endpoint": "https://api.deepseek.com",
-     "enabled": false
+     "enabled": true
     }
    ],
    "2": [
