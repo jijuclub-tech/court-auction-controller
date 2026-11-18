@@ -1,0 +1,224 @@
+{
+ "_note": "Generated from court-auction-collector-new standalone_collector/control/defaults.py (S-0.3.31-CONTROL). Keep in step with the collector. DeepSeek (level 1) is on: Windows collectors feed it the built-in OCR text; collectors without OCR pass it.",
+ "sites": [
+  {
+   "site_id": "courtauction",
+   "name": "법원경매정보",
+   "url": "https://www.courtauction.go.kr",
+   "group": "frequent",
+   "note": "본 수집 사이트. 주소창에 URL을 치지 않고 메뉴로 이동"
+  },
+  {
+   "site_id": "iros",
+   "name": "인터넷등기소",
+   "url": "https://www.iros.go.kr",
+   "group": "frequent",
+   "note": "로그인·결제 앞 단계까지만 자동. 보안문자는 사람"
+  },
+  {
+   "site_id": "landinfo",
+   "name": "토지정보",
+   "url": "",
+   "group": "frequent",
+   "note": "대상 사이트 확정 필요 (관제기에서 주소 입력)"
+  },
+  {
+   "site_id": "onbid",
+   "name": "온비드",
+   "url": "https://www.onbid.co.kr",
+   "group": "other",
+   "note": ""
+  },
+  {
+   "site_id": "ggauction",
+   "name": "지지옥션",
+   "url": "https://www.ggi.co.kr",
+   "group": "other",
+   "note": "로그인 방식·메뉴는 1호기 확인 뒤 채움"
+  }
+ ],
+ "routes": [
+  {
+   "route_id": "court_withdrawals_daily",
+   "site_id": "courtauction",
+   "name": "취하·취소 일일 점검 (경매공고 → 매각공고 → 달력)",
+   "priority": 1,
+   "steps": [
+    {
+     "goal": "상단 메뉴 '경매공고'에 마우스를 올려 하위 메뉴를 연 뒤 '(부동산)매각공고'를 직선으로 클릭한다. URL을 치지 않는다.",
+     "start_level": 1
+    },
+    {
+     "goal": "매각공고 달력 화면이 보이면 오늘·이번 주 날짜 칸에서 '취소' 또는 '취하' 표식이 있는 계 이름(예: 경매○계) 글자를 클릭한다. 표식만 누르지 않는다.",
+     "start_level": 1
+    },
+    {
+     "goal": "열린 공고 화면의 표가 비어 있으면 '이전'을 눌러 '기일변경/취하/취소 공고내역'을 연다. 목록이 보이면 FINISH.",
+     "start_level": 1
+    }
+   ]
+  },
+  {
+   "route_id": "court_sale_results",
+   "site_id": "courtauction",
+   "name": "낙찰 물건 (경매물건 → 매각결과검색)",
+   "priority": 2,
+   "steps": [
+    {
+     "goal": "상단 '경매물건' 메뉴를 열고 '매각결과검색'을 클릭한다.",
+     "start_level": 1
+    },
+    {
+     "goal": "법원 선택 칸에서 담당 법원을 고른다('전체'는 쓰지 않는다). 그 화면의 청록색 '검색' 단추를 누른다.",
+     "start_level": 2
+    },
+    {
+     "goal": "결과 목록이 보이면 FINISH. 최근 낙찰부터 처리한다.",
+     "start_level": 1
+    }
+   ]
+  },
+  {
+   "route_id": "court_appraisal",
+   "site_id": "courtauction",
+   "name": "감정평가서·기본자료 (경매물건 → 물건상세검색)",
+   "priority": 3,
+   "steps": [
+    {
+     "goal": "상단 '경매물건' 메뉴를 열고 '물건상세검색'을 클릭한다.",
+     "start_level": 1
+    },
+    {
+     "goal": "법원을 고르고 청록색 '검색'을 누른다(초기화 아님).",
+     "start_level": 2
+    },
+    {
+     "goal": "목록에서 '소재지 및 내역' 주소 링크를 눌러 물건상세를 연다. '조회중입니다'가 사라질 때까지 기다린다.",
+     "start_level": 2
+    },
+    {
+     "goal": "사진 아래 문서 단추 줄에서 '감정평가서'를 누르고 뷰어의 다운로드 화살표 → '저장'을 누른다. 노란 아크로뱃 아이콘·'전자' 배지는 누르지 않는다. 저장되면 FINISH.",
+     "start_level": 2
+    }
+   ]
+  }
+ ],
+ "ladder": {
+  "levels": {
+   "1": [
+    {
+     "kind": "ollama",
+     "model": "qwen2.5vl:7b",
+     "endpoint": "http://127.0.0.1:11434",
+     "enabled": false
+    },
+    {
+     "kind": "deepseek",
+     "model": "deepseek-chat",
+     "endpoint": "https://api.deepseek.com",
+     "enabled": true
+    }
+   ],
+   "2": [
+    {
+     "kind": "gemini",
+     "model": "gemini-2.5-flash-lite",
+     "enabled": true
+    }
+   ],
+   "3": [
+    {
+     "kind": "controller",
+     "model": "control_center",
+     "enabled": true,
+     "wait_minutes": 3
+    },
+    {
+     "kind": "gemini",
+     "model": "gemini-2.5-pro",
+     "enabled": false
+    },
+    {
+     "kind": "openai",
+     "model": "gpt-4.1",
+     "enabled": false
+    },
+    {
+     "kind": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "enabled": false
+    },
+    {
+     "kind": "xai",
+     "model": "grok-4",
+     "enabled": false
+    },
+    {
+     "kind": "channel",
+     "model": "grok_bot",
+     "enabled": false
+    },
+    {
+     "kind": "channel",
+     "model": "user",
+     "enabled": false
+    }
+   ],
+   "4": [
+    {
+     "kind": "admin",
+     "model": "manager",
+     "enabled": true,
+     "local_wait_minutes": 2,
+     "remote": true,
+     "endpoint": "",
+     "app_page": "",
+     "phone": true,
+     "send_image": true,
+     "wait_minutes": 30
+    }
+   ]
+  }
+ },
+ "vendor_models": {
+  "ollama": [
+   "qwen2.5vl:7b",
+   "llama3.2-vision",
+   "llava:13b",
+   "gemma3:12b"
+  ],
+  "deepseek": [
+   "deepseek-chat",
+   "deepseek-reasoner"
+  ],
+  "gemini": [
+   "gemini-2.5-flash-lite",
+   "gemini-2.5-flash",
+   "gemini-2.5-pro"
+  ],
+  "openai": [
+   "gpt-4.1-mini",
+   "gpt-4.1",
+   "gpt-4o"
+  ],
+  "anthropic": [
+   "claude-haiku-4-5",
+   "claude-sonnet-4-5",
+   "claude-opus-4-1"
+  ],
+  "xai": [
+   "grok-4",
+   "grok-3-mini"
+  ],
+  "channel": [
+   "grok_bot",
+   "user"
+  ],
+  "controller": [
+   "control_center"
+  ],
+  "admin": [
+   "manager"
+  ]
+ }
+}
