@@ -87,7 +87,7 @@ def _field(b, key, pattern, required=True):
     return v
 
 def _checked_collector(h, con, b):
-    name = _field(b, "name", SAFE_ID)
+    name = _field(b, "name", SAFE_NAME)
     row = h._collector_ok(con, name)
     # Strong authentication is mandatory for the new write endpoints,
     # including when legacy endpoints still allow tokenless collectors.
