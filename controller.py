@@ -659,12 +659,24 @@ except ValueError:
     COLLECTOR_DEFAULTS = {}
 
 
+def _performance_close_loop():
+    """Local in-process closing, no GitHub Actions or external scheduler."""
+    while True:
+        try:
+            with db() as con:
+                performance.auto_close(con)
+        except sqlite3.Error:
+            pass  # DB is checked again on the next tick
+        time.sleep(600)
+
+
 def main():
     ap = argparse.ArgumentParser(description="법원경매 관제기")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8770)
     a = ap.parse_args()
     init()
+    threading.Thread(target=_performance_close_loop, daemon=True, name="performance-close").start()
     if not ADMIN_TOKEN:
         print("경고: CONTROLLER_ADMIN_TOKEN 이 없어 관리인 화면(/admin)을 쓸 수 없습니다.")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
