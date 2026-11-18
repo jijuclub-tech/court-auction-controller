@@ -29,6 +29,7 @@ class PerformanceAPITests(unittest.TestCase):
         os.environ["CONTROLLER_DATA"] = cls.tmp.name
         os.environ["CONTROLLER_ADMIN_TOKEN"] = "fake-admin-test-token"
         os.environ.pop("CONTROLLER_AI", None)
+        os.environ.pop("NOTIFY_URL", None)  # never send notifications during offline tests
         import controller
         cls.c = importlib.reload(controller)
         cls.c.init()
