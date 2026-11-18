@@ -278,6 +278,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "version": VERSION, "time": now()})
         if method == "GET" and p in ("/admin", "/"):
             return self._page()
+        if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력 (admin 공통라우트 이전)
+            return
         if p.startswith("/api/admin/"):
             if not self._admin():
                 return self._json(403, {"ok": False, "error": "admin token"})
@@ -309,8 +311,6 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/collector/update_file/") and method == "GET":
             return self._update_file(p.rsplit("/", 1)[1], q)
         if learning.route(self, method, p, q):      # 학습서: experience / visit / Grok bot
-            return
-        if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력
             return
         if p in ("/api/ladder/ask", "/api/escalations") and method == "POST":
             return self._new_call("ask" if p == "/api/ladder/ask" else "escalation", self._body())
