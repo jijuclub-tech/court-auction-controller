@@ -10,9 +10,8 @@ import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
-KST = ZoneInfo("Asia/Seoul")
+KST = timezone(timedelta(hours=9))  # KST: UTC+09, no daylight saving
 SAFE_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9가-힣 _./()-]{1,80}$")
 SHA256 = re.compile(r"^[a-fA-F0-9]{64}$")
