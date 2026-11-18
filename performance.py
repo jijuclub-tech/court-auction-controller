@@ -212,6 +212,18 @@ def close_day(con, b):
     return {"ok": True, "already_closed": False, "closure": {"work_date": day, "closed_at": when,
              "successes": s["a"], "failures": s["b"], "duplicates": s["c"]}}
 
+def auto_close(con):
+    """Close all completed KST dates with actual reports; safe after restarts."""
+    cutoff = _today().isoformat()
+    days = [r["work_date"] for r in con.execute(
+        "SELECT DISTINCT work_date FROM performance_daily "
+        "WHERE work_date < ? AND work_date NOT IN (SELECT work_date FROM performance_closures) "
+        "ORDER BY work_date", (cutoff,))]
+    for day in days:
+        close_day(con, {"work_date": day})
+    return len(days)
+
+
 def reconcile(con, b):
     # Caller supplies an *independently checked* file count. This is not a file-scan API.
     day = _date(b.get("work_date"))
