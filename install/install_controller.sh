@@ -15,7 +15,7 @@
 set -euo pipefail
 
 VERSION="S-0.1.2-CONTROL"
-BRANCH="${BRANCH:-claude/controller-S012-learning-20261117}"
+BRANCH="${BRANCH:-main}"
 RAW="https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/${BRANCH}"
 APP="/opt/bidguard/court-auction-controller"
 DATA="/var/lib/court-auction-controller"
@@ -24,7 +24,7 @@ ENVF="${ETC}/controller.env"
 UNIT="/etc/systemd/system/court-auction-controller.service"
 SVC_USER="bidguard-ctl"
 PORT="${PORT:-8770}"
-FILES="controller.py learning.py performance.py site_map_ingest.py site_map_sender.py site_map_backup.py admin.html collector_defaults.json install/uninstall_controller.sh"
+FILES="controller.py learning.py performance.py site_map_ingest.py site_map_sender.py site_map_backup.py key_wallet.py admin.html collector_defaults.json install/uninstall_controller.sh"
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf '\n[중단] %s\n' "$*" >&2; exit 1; }
@@ -50,9 +50,19 @@ else
     else die "wget 이나 curl 이 필요합니다."; fi
   done
 fi
-python3 -m py_compile "${STAGE}/controller.py" "${STAGE}/learning.py" "${STAGE}/performance.py" "${STAGE}/site_map_ingest.py" "${STAGE}/site_map_sender.py" "${STAGE}/site_map_backup.py" || die "파이썬 프로그램 파일을 읽을 수 없습니다."
+python3 -m py_compile "${STAGE}/controller.py" "${STAGE}/learning.py" "${STAGE}/performance.py" "${STAGE}/site_map_ingest.py" "${STAGE}/site_map_sender.py" "${STAGE}/site_map_backup.py" "${STAGE}/key_wallet.py" || die "파이썬 프로그램 파일을 읽을 수 없습니다."
 python3 -c "import json,sys; json.load(open(sys.argv[1],encoding='utf-8'))" "${STAGE}/collector_defaults.json" \
   || die "collector_defaults.json 이 깨졌습니다."
+
+# 1b. Free, audited library for local CLI wallet. Main controller works independently.
+if ! python3 -c 'from cryptography.hazmat.primitives.ciphers.aead import AESGCM' >/dev/null 2>&1; then
+  say "키 지갑 암호화 라이브러리 설치를 시도합니다 (무료 python3-cryptography)"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq python3-cryptography || say "설치 실패: 지갑만 비활성. python3-cryptography 설치 후 사용하십시오."
+  else
+    say "python3-cryptography 설치가 필요합니다. 기존 관제기는 계속 작동합니다."
+  fi
+fi
 
 # 2. service account (no login, no home)
 if ! id "$SVC_USER" >/dev/null 2>&1; then
