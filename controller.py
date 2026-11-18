@@ -43,6 +43,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 import learning
+import performance
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -118,6 +119,7 @@ def init():
     learning.bind(db, kv_get, kv_set, audit, now, DATA)
     with db() as con:
         learning.init(con)
+        performance.init(con)
 
 
 def kv_get(con, k, default=None):
@@ -210,6 +212,8 @@ def controller_ai(call_body):
 # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "court-auction-controller/" + VERSION
+    db_module = staticmethod(db)
+    notify_module = staticmethod(notify)
 
     def log_message(self, fmt, *args):  # no request bodies in logs
         print("%s %s" % (now(), fmt % args))
@@ -305,6 +309,8 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/collector/update_file/") and method == "GET":
             return self._update_file(p.rsplit("/", 1)[1], q)
         if learning.route(self, method, p, q):      # 학습서: experience / visit / Grok bot
+            return
+        if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력
             return
         if p in ("/api/ladder/ask", "/api/escalations") and method == "POST":
             return self._new_call("ask" if p == "/api/ladder/ask" else "escalation", self._body())
