@@ -44,6 +44,7 @@ from urllib.request import Request, urlopen
 
 import learning
 import performance
+import site_map_ingest
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -120,6 +121,7 @@ def init():
     with db() as con:
         learning.init(con)
         performance.init(con)
+        site_map_ingest.init(con, DATA)
 
 
 def kv_get(con, k, default=None):
@@ -211,6 +213,9 @@ def controller_ai(call_body):
 
 # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
+    def _site_map_db(self):
+        return db()
+
     server_version = "court-auction-controller/" + VERSION
     db_module = staticmethod(db)
     notify_module = staticmethod(notify)
@@ -274,6 +279,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self, method):
         u = urlparse(self.path)
         p, q = u.path.rstrip("/") or "/", {k: v[0] for k, v in parse_qs(u.query).items()}
+        if site_map_ingest.route(self, method, p, q):
+            return
         if method == "GET" and p == "/api/health":
             return self._json(200, {"ok": True, "version": VERSION, "time": now()})
         if method == "GET" and p in ("/admin", "/"):
