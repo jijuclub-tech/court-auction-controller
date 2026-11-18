@@ -199,6 +199,9 @@ def receive(handler, b):
                 (site, batch)).fetchone()
             if previous:
                 if hmac.compare_digest(previous["content_sha256"], content_hash):
+                    stored = ROOT / site / batch / "manifest.json"
+                    if not stored.is_file() or digest(stored.read_bytes()) != content_hash:
+                        return 503, {"ok": False, "error": "stored batch hash mismatch"}
                     return 200, {"ok": True, "status": "stored", "duplicate": True,
                                  "site_id": site, "batch_id": batch, "sha256": content_hash}
                 return 409, {"ok": False, "error": "batch_id conflict"}
