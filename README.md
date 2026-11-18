@@ -118,3 +118,10 @@ python3 controller.py --host 0.0.0.0 --port 8770
 python3 -m pytest -q test_controller.py
 ```
 GitHub Actions는 쓰지 않습니다.
+
+
+## 관리자 키 지갑 (베타)
+
+`key_wallet.py`는 별도 로컬 관리자 CLI입니다. **마스터 256비트 난수, Scrypt + AES-256-GCM 암호화, 로그별 독립 세션키의 마스터/직원 비밀번호 이중 감싸기, 암호화 파일만 로컬/NAS/Drive 백업**을 시험합니다. 웹 API에서 마스터 값을 반환하지 않습니다. `cryptography` 무료 검증 라이브러리가 필요합니다.
+
+자세한 설치·테스트 및 인쇄/복구 안내: [docs/KEY_WALLET_BETA.md](docs/KEY_WALLET_BETA.md). 테스트: `python3 -m unittest -v test_key_wallet`. 이 기능은 키·실데이터 없이 GitHub에 게시되며 실제 발급/백업/복원은 설치 기기에서 검증해야 합니다.
