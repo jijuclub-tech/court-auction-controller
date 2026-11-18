@@ -188,8 +188,8 @@ def summary(con, q):
         return [dict(r) for r in con.execute(sql, args)]
     count = con.execute("SELECT COUNT(*) FROM performance_daily" + where, args).fetchone()[0]
     close = con.execute("SELECT * FROM performance_closures WHERE work_date=?", (end,)).fetchone()
-    late = con.execute("SELECT COUNT(*) FROM performance_events WHERE work_date=? AND late_after_close=1",
-                       (end,)).fetchone()[0]
+    late = con.execute("SELECT COUNT(*) FROM performance_events" + where + " AND late_after_close=1",
+                       args).fetchone()[0]
     return {"ok": True, "start": start, "end": end, "status": "reported" if count else "no_reports",
             "totals": totals, "daily": group("work_date"), "by_court": group("court"),
             "by_document_type": group("document_type"), "by_collector": group("collector"),
