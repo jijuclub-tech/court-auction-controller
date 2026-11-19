@@ -45,6 +45,7 @@ from urllib.request import Request, urlopen
 import learning
 import performance
 import site_map_ingest
+import collector_dispatch
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -122,6 +123,7 @@ def init():
         learning.init(con)
         performance.init(con)
         site_map_ingest.init(con, DATA)
+        collector_dispatch.init(con)
 
 
 def kv_get(con, k, default=None):
@@ -286,6 +288,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and p in ("/admin", "/"):
             return self._page()
         if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력 (admin 공통라우트 이전)
+            return
+        if collector_dispatch.route(self, method, p, q):  # 2대 수집기 중앙 업무/ACK/중복방지
             return
         if p.startswith("/api/admin/"):
             if not self._admin():
