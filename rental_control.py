@@ -190,6 +190,21 @@ def poll(con, name, agent_session="offline-test"):
                 "reason":"lease_expired"}
         active=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED') ORDER BY created_at LIMIT 1""",(name,)).fetchone()
+        if active and active["last_running_at"] is not None:
+            # Account for verified wall time at each lease renewal, including
+            # long-running steps that have not emitted progress callbacks.
+            stamp=_now()
+            delta=max(0,min(LEASE_SECONDS,stamp-active["last_running_at"]))
+            used=active["used_seconds"]+delta
+            status=active["status"]
+            if active["duration_limit"] and used>=active["duration_limit"] and status=="RUNNING":
+                status="PAUSE_REQUESTED"
+                _event(con,active["job_id"],"controller","RESERVATION_LIMIT")
+            con.execute("""UPDATE rental_jobs SET used_seconds=?,last_running_at=?,
+                         status=?,updated_at=? WHERE job_id=?""",
+                        (used,stamp,status,stamp,active["job_id"]))
+            active=con.execute("SELECT * FROM rental_jobs WHERE job_id=?",
+                               (active["job_id"],)).fetchone()
         busy=_busy_primary(con,name)
         if active and active["agent_session"] and active["agent_session"] != agent_session:
             con.execute("""UPDATE rental_jobs SET status='RECOVERY_REQUIRED',
