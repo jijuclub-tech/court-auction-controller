@@ -169,24 +169,30 @@ def change(con, job_id, action, who="admin"):
     _event(con,job_id,who,action.upper())
     return _row(con.execute("SELECT * FROM rental_jobs WHERE job_id=?", (job_id,)).fetchone())
 
+def reconcile_expired(con):
+    """Move stale leases to operator review without replaying unfinished steps."""
+    rows=con.execute("""SELECT job_id FROM rental_jobs
+        WHERE status IN ('LEASED','RUNNING','PAUSE_REQUESTED')
+          AND lease_until<=?""", (_now(),)).fetchall()
+    for row in rows:
+        con.execute("""UPDATE rental_jobs SET status='RECOVERY_REQUIRED',
+             last_running_at=NULL,updated_at=? WHERE job_id=?""",(_now(),row["job_id"]))
+        _event(con,row["job_id"],"controller","LEASE_EXPIRED")
+    return len(rows)
+
 def poll(con, name, agent_session="offline-test"):
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}", agent_session):
         raise ValueError("session_id invalid")
     con.execute("BEGIN IMMEDIATE")
     try:
-        # An expired rental must not be blindly reassigned; the operator must
-        # reconcile it after inspecting the collector's last safe checkpoint.
-        expired=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
+        stale=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED')
              AND lease_until<=? ORDER BY created_at LIMIT 1""",(name,_now())).fetchone()
-        if expired:
-            con.execute("""UPDATE rental_jobs SET status='RECOVERY_REQUIRED',
-                         last_running_at=NULL,updated_at=? WHERE job_id=?""",
-                        (_now(),expired["job_id"]))
-            _event(con,expired["job_id"],"controller","LEASE_EXPIRED")
+        reconcile_expired(con)
+        if stale:
             con.commit()
             return {"action":"PAUSE","job":_row(con.execute(
-                "SELECT * FROM rental_jobs WHERE job_id=?",(expired["job_id"],)).fetchone()),
+                "SELECT * FROM rental_jobs WHERE job_id=?",(stale["job_id"],)).fetchone()),
                 "reason":"lease_expired"}
         active=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED') ORDER BY created_at LIMIT 1""",(name,)).fetchone()
@@ -215,6 +221,8 @@ def poll(con, name, agent_session="offline-test"):
             return {"action":"PAUSE","reason":"session_changed","job":_row(active)}
         if active:
             if busy or active["status"]=="PAUSE_REQUESTED":
+                con.execute("UPDATE rental_jobs SET lease_until=? WHERE job_id=?",
+                            (_now()+LEASE_SECONDS,active["job_id"]))
                 if active["status"]!="PAUSE_REQUESTED":
                     con.execute("UPDATE rental_jobs SET status='PAUSE_REQUESTED',updated_at=? WHERE job_id=?",
                                 (_now(),active["job_id"]))
@@ -324,6 +332,7 @@ def route(handler, method, path, query):
                 return True
             with handler.db_module() as con:
                 if path=="/api/admin/rentals" and method=="GET":
+                    reconcile_expired(con)
                     out={"jobs":[_row(r) for r in con.execute("SELECT * FROM rental_jobs ORDER BY created_at DESC LIMIT 100")],
                          "members":[{"member_id":r["member_id"],"active":r["active"]} for r in
                                     con.execute("SELECT member_id,active FROM rental_members")]}
