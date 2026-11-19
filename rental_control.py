@@ -7,6 +7,7 @@ No browser passwords, screenshots or raw downloaded documents are stored here.
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -16,6 +17,7 @@ import uuid
 LEASE_SECONDS = 180
 MAX_RESERVATION_SECONDS = 12 * 3600
 DEFAULT_ROUTES = []
+RENTAL_PILOT_ENABLED = os.environ.get('BIDGUARD_RENTAL_PILOT_ENABLED', '') == '1'
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rental_members (
@@ -149,6 +151,7 @@ def change(con, job_id, action, who="admin"):
       "pause":({"LEASED","RUNNING","PENDING","RESUME_QUEUED"},"PAUSE_REQUESTED"),
       "resume":({"PAUSED"},"RESUME_QUEUED"),
       "cancel":({"AWAITING_APPROVAL","PENDING","PAUSED","RESUME_QUEUED"},"CANCELLED"),
+      "review_resume":({"RECOVERY_REQUIRED"},"RESUME_QUEUED"),
     }
     if action not in states or job["status"] not in states[action][0]:
         raise ValueError("invalid state transition")
@@ -162,6 +165,20 @@ def change(con, job_id, action, who="admin"):
 def poll(con, name):
     con.execute("BEGIN IMMEDIATE")
     try:
+        # An expired rental must not be blindly reassigned; the operator must
+        # reconcile it after inspecting the collector's last safe checkpoint.
+        expired=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
+             status IN ('LEASED','RUNNING','PAUSE_REQUESTED')
+             AND lease_until<=? ORDER BY created_at LIMIT 1""",(name,_now())).fetchone()
+        if expired:
+            con.execute("""UPDATE rental_jobs SET status='RECOVERY_REQUIRED',
+                         last_running_at=NULL,updated_at=? WHERE job_id=?""",
+                        (_now(),expired["job_id"]))
+            _event(con,expired["job_id"],"controller","LEASE_EXPIRED")
+            con.commit()
+            return {"action":"PAUSE","job":_row(con.execute(
+                "SELECT * FROM rental_jobs WHERE job_id=?",(expired["job_id"],)).fetchone()),
+                "reason":"lease_expired"}
         active=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED') ORDER BY created_at LIMIT 1""",(name,)).fetchone()
         busy=_busy_primary(con,name)
@@ -255,6 +272,9 @@ def route(handler, method, path, query):
                     "/api/rentals/jobs","/api/rentals/favorites","/api/collector/rentals/poll",
                     "/api/collector/rentals/report"):
         return False
+    if not RENTAL_PILOT_ENABLED:
+        handler._json(503,{"ok":False,"error":"임대형 수집기는 준비 중입니다"})
+        return True
     try:
         if path.startswith("/api/admin/"):
             if not handler._admin():
