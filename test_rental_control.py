@@ -20,7 +20,7 @@ class RentalControlTests(unittest.TestCase):
         rent.init(self.db,ROUTES)
         self.db.execute("INSERT INTO collectors(name,type,status,token_hash,last_seen,last_state) VALUES(?,?,?,?,?,?)",
           ("c1","control","approved","sha256-of-device-token",datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           json.dumps({"state":"idle"})))
+           json.dumps({"state":"ready","rental_enabled":True})))
         self.db.commit()
         self.token=rent.create_member(self.db,"member1")["access_code"]
         self.db.commit()
@@ -43,6 +43,22 @@ class RentalControlTests(unittest.TestCase):
         self.assertEqual(rent._member(self.db,"Bearer "+self.token),"member1")
         self.assertIsNone(rent._member(self.db,"Bearer wrong"))
         self.assertNotIn(self.token,str(self.db.execute("SELECT * FROM rental_members").fetchone()[:]))
+
+    def test_controller_priority_over_poll_order(self):
+        import json as _json
+        self.db.execute("INSERT INTO collectors(name,type,status,token_hash,last_seen,last_state) VALUES(?,?,?,?,?,?)",
+          ("c2","control","approved","sha256-of-other-token",
+           datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           _json.dumps({"state":"ready","rental_enabled":True})))
+        self.db.execute("INSERT INTO kv(k,v) VALUES('rental_priority',?)",
+                        (_json.dumps({"c1":1,"c2":9}),))
+        self.db.commit()
+        j=self.request()
+        self.approve(j)
+        self.assertEqual(rent.poll(self.db,"c1")["action"],"WAIT")
+        assigned=rent.poll(self.db,"c2")
+        self.assertEqual(assigned["action"],"RUN")
+        self.assertEqual(assigned["job"]["collector"],"c2")
 
     def test_reservation_limit_and_manual_approval(self):
         with self.assertRaises(ValueError):
