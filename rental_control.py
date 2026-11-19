@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS rental_events (
   event_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, at INTEGER NOT NULL,
   actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(job_id) REFERENCES rental_jobs(job_id));
+CREATE TABLE IF NOT EXISTS rental_admin_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor TEXT NOT NULL,
+  action TEXT NOT NULL, detail TEXT NOT NULL);
 """
 
 def init(con, default_routes=None):
@@ -129,6 +132,28 @@ def _preferred_collector(con):
         return None
     candidates.sort(key=lambda x:(-x[0],x[1]))
     return candidates[0][1]
+
+def priorities(con):
+    r=con.execute("SELECT v FROM kv WHERE k='rental_priority'").fetchone()
+    try:
+        obj=json.loads(r["v"]) if r else {}
+        return obj if isinstance(obj,dict) else {}
+    except (ValueError,TypeError):
+        return {}
+
+def set_priority(con, name, value):
+    if not con.execute("SELECT 1 FROM collectors WHERE name=? AND type='control'",(name,)).fetchone():
+        raise ValueError("관제형 수집기를 선택하세요")
+    value=int(value)
+    if value<0 or value>100:
+        raise ValueError("우선순위는 0~100입니다")
+    obj=priorities(con)
+    obj[name]=value
+    con.execute("""INSERT INTO kv(k,v) VALUES('rental_priority',?)
+                 ON CONFLICT(k) DO UPDATE SET v=excluded.v""",(json.dumps(obj),))
+    con.execute("INSERT INTO rental_admin_events(at,actor,action,detail) VALUES(?,?,?,?)",
+                (_now(),"admin","SET_PRIORITY",json.dumps({"collector":name,"priority":value})))
+    return obj
 
 def create_member(con, member_id):
     member_id=str(member_id or "").strip()
@@ -340,7 +365,8 @@ def report(con, name, body):
 
 def route(handler, method, path, query):
     if path not in ("/api/admin/rentals","/api/admin/rentals/member",
-                    "/api/admin/rentals/change","/api/rentals/catalog",
+                    "/api/admin/rentals/change","/api/admin/rentals/priority",
+                    "/api/rentals/catalog",
                     "/api/rentals/jobs","/api/rentals/favorites","/api/collector/rentals/poll",
                     "/api/collector/rentals/report"):
         return False
@@ -355,7 +381,8 @@ def route(handler, method, path, query):
             with handler.db_module() as con:
                 if path=="/api/admin/rentals" and method=="GET":
                     reconcile_expired(con)
-                    out={"jobs":[_row(r) for r in con.execute("SELECT * FROM rental_jobs ORDER BY created_at DESC LIMIT 100")],
+                    out={"priority":priorities(con),
+                         "jobs":[_row(r) for r in con.execute("SELECT * FROM rental_jobs ORDER BY created_at DESC LIMIT 100")],
                          "members":[{"member_id":r["member_id"],"active":r["active"]} for r in
                                     con.execute("SELECT member_id,active FROM rental_members")]}
                 elif path=="/api/admin/rentals/member" and method=="POST":
@@ -363,6 +390,9 @@ def route(handler, method, path, query):
                 elif path=="/api/admin/rentals/change" and method=="POST":
                     b=handler._body()
                     out=change(con,str(b.get("job_id")),str(b.get("action")))
+                elif path=="/api/admin/rentals/priority" and method=="POST":
+                    b=handler._body()
+                    out={"priority":set_priority(con,str(b.get("name") or ""),b.get("priority",0))}
                 else:
                     handler._json(405,{"ok":False});return True
         elif path.startswith("/api/collector/"):
