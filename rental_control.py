@@ -71,7 +71,7 @@ def _catalog(con):
     except (TypeError, ValueError):
         routes = []
     if not isinstance(routes, list):
-        return []
+        routes = DEFAULT_ROUTES
     # Only pre-approved routes can be rented, not arbitrary commands or websites.
     return [{"route_id":x.get("route_id"),"name":str(x.get("name") or x.get("route_id"))[:80]}
             for x in routes if isinstance(x,dict) and x.get("route_id")
@@ -227,15 +227,21 @@ def report(con, name, body):
                 "completed":"DONE","failed":"FAILED"}[outcome]
         if job["status"]=="PAUSE_REQUESTED" and outcome in ("started","progress"):
             raise PermissionError("pause required")
-        seconds=max(0,min(LEASE_SECONDS,int(body.get("elapsed_seconds") or 0)))
+        # Compute chargeable running time on the controller, never trust a
+        # collector-supplied elapsed_seconds value.
+        now=_now()
+        previous=job["last_running_at"]
+        seconds=max(0,min(LEASE_SECONDS,now-previous)) if previous is not None else 0
         used=job["used_seconds"]+seconds
         if job["duration_limit"] and used>=job["duration_limit"] and status=="RUNNING":
             status="PAUSE_REQUESTED"
         cp=max(job["checkpoint"],int(body.get("checkpoint") or 0))
         if cp>1000000:
             raise ValueError("checkpoint invalid")
+        running_at=now if status in ("RUNNING","PAUSE_REQUESTED") else None
         con.execute("""UPDATE rental_jobs SET status=?,used_seconds=?,checkpoint=?,
-                       updated_at=? WHERE job_id=?""",(status,used,cp,_now(),job_id))
+                       last_running_at=?,updated_at=? WHERE job_id=?""",
+                    (status,used,cp,running_at,now,job_id))
         _event(con,job_id,name,outcome.upper(),json.dumps({"checkpoint":cp,"seconds":seconds}),event_id)
         con.commit()
         return {"status":status,"checkpoint":cp,"used_seconds":used}
