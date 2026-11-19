@@ -16,6 +16,7 @@ article button{flex:0 1 auto}.sub{color:#526b84;font-size:18px;margin:9px 0}
 </style></head><body><header>BIDGUARD</header><main><h1>수집기 관제</h1>
 <section><h2>관리자 연결</h2><div class="row"><input id="token" type="password" autocomplete="off" placeholder="관리자 인증"><button id="connect">연결</button><button id="refresh" class="light">새로고침</button></div><p id="notice" role="status"></p></section>
 <section><h2>수집기 현황</h2><div id="nodes">관리자 연결 후 표시됩니다.</div></section>
+<section><h2>임대 배정 우선순위</h2><div class="row"><select id="priorityNode" style="flex:2"></select><input id="priorityValue" type="number" min="0" max="100" value="0" aria-label="우선순위"><button id="savePriority">저장</button></div></section>
 <section><h2>임대 작업</h2><div id="jobs">작업 내역이 없습니다.</div></section>
 <section><h2>회원 이용코드</h2><div class="row"><input id="member" placeholder="회원 식별자" autocomplete="off"><button id="issue">발급</button></div><div id="issued" role="status"></div></section>
 </main><script>
@@ -26,6 +27,10 @@ body:body?JSON.stringify(body):undefined,cache:'no-store'});const j=await r.json
 async function refresh(){if(!token)return $('notice').textContent='관리자 연결이 필요합니다';
 try{const [state,rental]=await Promise.all([request('/api/admin/state'),request('/api/admin/rentals')]);
 $('notice').textContent='연결됨';let nodes=$('nodes');nodes.replaceChildren();
+const selected=$('priorityNode').value;const select=$('priorityNode');select.replaceChildren();
+(state.collectors||[]).filter(n=>n.type==='control').forEach(n=>select.add(new Option(n.name,n.name)));
+if([...select.options].some(o=>o.value===selected))select.value=selected;
+$('priorityValue').value=(rental.priority||{})[select.value]||0;
 (state.collectors||[]).forEach(n=>{const e=document.createElement('article'),name=document.createElement('strong'),detail=document.createElement('div');
 name.textContent=n.name;detail.textContent=(n.status==='approved'?'정상 등록':n.status==='pending'?'승인 대기':'차단')+' · '+(n.last_seen||'접속 이력 없음');detail.className='sub';e.append(name,detail);nodes.append(e)});
 if(!(state.collectors||[]).length)nodes.textContent='등록된 수집기가 없습니다.';
@@ -43,6 +48,11 @@ if(!(rental.jobs||[]).length)jobs.textContent='접수된 임대 작업이 없습
 }catch(e){$('notice').textContent=e.message}}
 $('connect').onclick=()=>{token=$('token').value.trim();$('token').value='';refresh()};
 $('refresh').onclick=refresh;
+$('priorityNode').onchange=()=>{$('priorityValue').value=0;refresh()};
+$('savePriority').onclick=async()=>{
+ try{await request('/api/admin/rentals/priority',{name:$('priorityNode').value,
+ priority:Number($('priorityValue').value)});$('notice').textContent='저장되었습니다';refresh()}
+ catch(e){$('notice').textContent=e.message}};
 $('issue').onclick=async()=>{if(!token)return $('notice').textContent='관리자 연결이 필요합니다';
 try{const m=await request('/api/admin/rentals/member',{member_id:$('member').value.trim()});
 let out=$('issued');out.replaceChildren();const title=document.createElement('p');title.textContent='회원에게 안전한 방법으로 전달해 주세요.';
