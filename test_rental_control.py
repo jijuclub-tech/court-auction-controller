@@ -106,6 +106,50 @@ class RentalControlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rent.report(self.db,"c1",{**b,"outcome":"completed"})
 
+    def test_agent_restart_requires_operator_recovery(self):
+        j=self.request()
+        self.approve(j)
+        lease=rent.poll(self.db,"c1","first-session")["job"]
+        self.assertEqual(lease["lease_epoch"],1)
+        restart=rent.poll(self.db,"c1","newer-session")
+        self.assertEqual(restart["action"],"PAUSE")
+        self.assertEqual(self.db.execute("SELECT status FROM rental_jobs WHERE job_id=?",
+                                        (j["job_id"],)).fetchone()["status"],"RECOVERY_REQUIRED")
+        with self.assertRaises(PermissionError):
+            rent.report(self.db,"c1",{"job_id":j["job_id"],"lease_epoch":1,
+                       "session_id":"newer-session","event_id":"test-wrong-1","outcome":"completed"})
+        rent.change(self.db,j["job_id"],"review_resume")
+        self.db.commit()
+        reassigned=rent.poll(self.db,"c1","newer-session")["job"]
+        self.assertEqual(reassigned["lease_epoch"],2)
+
+    def test_expired_lease_never_automatically_replays(self):
+        j=self.request()
+        self.approve(j)
+        lease=rent.poll(self.db,"c1")["job"]
+        self.db.execute("UPDATE rental_jobs SET lease_until=? WHERE job_id=?",
+                        (int(time.time())-1,j["job_id"]))
+        self.db.commit()
+        self.assertEqual(rent.reconcile_expired(self.db),1)
+        self.db.commit()
+        self.assertEqual(self.db.execute("SELECT status FROM rental_jobs WHERE job_id=?",
+                                        (j["job_id"],)).fetchone()["status"],"RECOVERY_REQUIRED")
+        self.assertEqual(rent.poll(self.db,"c1")["action"],"WAIT")
+
+    def test_running_time_ticked_by_poll(self):
+        j=self.request("reserved",1)
+        self.approve(j)
+        lease=rent.poll(self.db,"c1")["job"]
+        rent.report(self.db,"c1",{"job_id":j["job_id"],"lease_epoch":lease["lease_epoch"],
+                                 "event_id":"test-start-tick","outcome":"started"})
+        self.db.execute("UPDATE rental_jobs SET last_running_at=? WHERE job_id=?",
+                        (int(time.time())-70,j["job_id"]))
+        self.db.commit()
+        rent.poll(self.db,"c1")
+        used=self.db.execute("SELECT used_seconds FROM rental_jobs WHERE job_id=?",
+                             (j["job_id"],)).fetchone()["used_seconds"]
+        self.assertGreaterEqual(used,69)
+
     def test_unapproved_route_is_rejected(self):
         with self.assertRaises(ValueError):
             rent.request(self.db,"member1",{"route_id":"https://unverified.invalid","mode":"one_time"})
