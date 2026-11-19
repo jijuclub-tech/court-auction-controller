@@ -15,6 +15,7 @@ import uuid
 
 LEASE_SECONDS = 180
 MAX_RESERVATION_SECONDS = 12 * 3600
+DEFAULT_ROUTES = []
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rental_members (
@@ -29,13 +30,17 @@ CREATE TABLE IF NOT EXISTS rental_jobs (
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
   FOREIGN KEY(member_id) REFERENCES rental_members(member_id));
 CREATE INDEX IF NOT EXISTS rental_queue_idx ON rental_jobs(status,created_at);
+CREATE TABLE IF NOT EXISTS rental_favorites (member_id TEXT NOT NULL,route_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,PRIMARY KEY(member_id,route_id));
 CREATE TABLE IF NOT EXISTS rental_events (
   event_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, at INTEGER NOT NULL,
   actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(job_id) REFERENCES rental_jobs(job_id));
 """
 
-def init(con):
+def init(con, default_routes=None):
+    global DEFAULT_ROUTES
+    DEFAULT_ROUTES = default_routes or []
     con.executescript(SCHEMA)
 
 def _now():
@@ -62,7 +67,7 @@ def _member(con, header):
 def _catalog(con):
     r = con.execute("SELECT v FROM kv WHERE k='routes'").fetchone()
     try:
-        routes = json.loads(r["v"]) if r else []
+        routes = json.loads(r["v"]) if r else DEFAULT_ROUTES
     except (TypeError, ValueError):
         routes = []
     if not isinstance(routes, list):
@@ -112,6 +117,8 @@ def create_member(con, member_id):
 
 def request(con, member_id, body):
     route=str(body.get("route_id") or "").strip()
+    if con.execute("SELECT COUNT(*) FROM rental_jobs WHERE member_id=? AND status NOT IN ('DONE','FAILED','CANCELLED')", (member_id,)).fetchone()[0] >= 3:
+        raise ValueError("진행 중 신청은 3건까지 가능합니다")
     if route not in {r["route_id"] for r in _catalog(con)}:
         raise ValueError("등록된 작업만 신청할 수 있습니다")
     mode=str(body.get("mode") or "one_time")
@@ -157,7 +164,7 @@ def poll(con, name):
     try:
         active=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED') ORDER BY created_at LIMIT 1""",(name,)).fetchone()
-        busy=_busy_primary(con,name) or not _node_idle(con,name)
+        busy=_busy_primary(con,name)
         if active:
             if busy or active["status"]=="PAUSE_REQUESTED":
                 if active["status"]!="PAUSE_REQUESTED":
@@ -170,8 +177,8 @@ def poll(con, name):
                             (_now()+LEASE_SECONDS,_now(),active["job_id"]))
                 result={"action":"RUN","job":_row(con.execute(
                   "SELECT * FROM rental_jobs WHERE job_id=?",(active["job_id"],)).fetchone())}
-        elif busy:
-            result={"action":"WAIT","reason":"primary_work"}
+        elif busy or not _node_idle(con,name):
+            result={"action":"WAIT","reason":"primary_work_or_not_ready"}
         else:
             job=con.execute("""SELECT * FROM rental_jobs
               WHERE status IN ('PENDING','RESUME_QUEUED')
@@ -239,7 +246,7 @@ def report(con, name, body):
 def route(handler, method, path, query):
     if path not in ("/api/admin/rentals","/api/admin/rentals/member",
                     "/api/admin/rentals/change","/api/rentals/catalog",
-                    "/api/rentals/jobs","/api/collector/rentals/poll",
+                    "/api/rentals/jobs","/api/rentals/favorites","/api/collector/rentals/poll",
                     "/api/collector/rentals/report"):
         return False
     try:
@@ -284,6 +291,23 @@ def route(handler, method, path, query):
                             (member,))]}
                     elif path=="/api/rentals/jobs" and method=="POST":
                         out={"job":request(con,member,handler._body())}
+                    elif path=="/api/rentals/favorites" and method=="GET":
+                        out={"favorites":[r["route_id"] for r in con.execute(
+                            "SELECT route_id FROM rental_favorites WHERE member_id=? ORDER BY created_at",(member,))]}
+                    elif path=="/api/rentals/favorites" and method=="POST":
+                        b=handler._body()
+                        rid=str(b.get("route_id") or "")
+                        if rid not in {x["route_id"] for x in _catalog(con)}:
+                            raise ValueError("지원하지 않는 사이트")
+                        if b.get("action")=="remove":
+                            con.execute("DELETE FROM rental_favorites WHERE member_id=? AND route_id=?",(member,rid))
+                        else:
+                            n=con.execute("SELECT COUNT(*) FROM rental_favorites WHERE member_id=?",(member,)).fetchone()[0]
+                            if n>=10:
+                                raise ValueError("즐겨찾기는 10곳까지 등록할 수 있습니다")
+                            con.execute("INSERT OR IGNORE INTO rental_favorites VALUES(?,?,?)",(member,rid,_now()))
+                        out={"favorites":[r["route_id"] for r in con.execute(
+                            "SELECT route_id FROM rental_favorites WHERE member_id=? ORDER BY created_at",(member,))]}
                     else:
                         handler._json(405,{"ok":False});return True
         handler._json(200,{"ok":True,**out})
