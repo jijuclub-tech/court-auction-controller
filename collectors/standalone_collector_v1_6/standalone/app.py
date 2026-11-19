@@ -80,7 +80,7 @@ def main(argv=None):
     sub.add_parser("status")
     a = ap.parse_args(argv)
     cfg = load()
-    secrets = SecretStore()
+    secrets = SecretStore(legacy=True)
     red = Redactor(secrets)
 
     if a.cmd == "keys":

@@ -104,6 +104,21 @@ def default_store_path():
     return os.path.join(base, "BIDGUARD", "standalone_secrets", "secrets.dpapi.json")
 
 
+def legacy_store_path():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "BIDGUARD", "secrets", "collector_handoff_keys.json")
+
+
+def legacy_value(name):
+    """이전 판(Collector_S0322)이 쓰던 노트북 키 파일에서 같은 이름을 읽는다(t863u). 값은 출력하지 않는다."""
+    try:
+        d = json.load(open(legacy_store_path(), encoding="utf-8-sig"))
+    except Exception:  # noqa: BLE001
+        return None
+    v = d.get(name) if isinstance(d, dict) else None
+    return str(v).strip() if v else None
+
+
 class SecretStore:
     """get(name) 순서: 이번 실행 메모리 → (있으면) DPAPI 저장본 → 사람에게 입력받기.
 
@@ -111,12 +126,13 @@ class SecretStore:
     dpapi 가 None 이면(윈도우 아님/시험) 저장하지 않고 메모리에만 둔다.
     """
 
-    def __init__(self, path=None, dpapi="auto", prompt_fn=None, ask_fn=None, allow_save=True):
+    def __init__(self, path=None, dpapi="auto", prompt_fn=None, ask_fn=None, allow_save=True, legacy=False):
         self.path = path or default_store_path()
         self.dpapi = default_dpapi() if dpapi == "auto" else dpapi
         self.prompt = prompt_fn or (lambda label: getpass.getpass(label + " 입력(화면에 안 보임): "))
         self.ask = ask_fn or (lambda q: input(q + " [y/N]: ").strip().lower() in ("y", "yes", "예", "ㅇ"))
         self.allow_save = allow_save
+        self.legacy = legacy  # t863u: 이전 판 노트북 키 파일도 읽기
         self._mem: dict[str, Secret] = {}
 
     # --- 저장본 ---
@@ -154,6 +170,11 @@ class SecretStore:
         if name in self._mem:
             return self._mem[name]
         v = self._from_file(name)
+        if not v and self.legacy:
+            v = legacy_value(name)
+        if not v and self.legacy and name in ("KB_SERVER_USER", "KB_SERVER_PASSWORD"):
+            # 노트북 안 로컬 관제기 로그인: 시작 파일(bat)이 환경변수로 넘긴다.
+            v = (os.environ.get(name) or "").strip() or None
         if not v and required:
             v = (self.prompt(NAMES.get(name, name)) or "").strip()
             if v and self.dpapi and self.allow_save and self.ask(
