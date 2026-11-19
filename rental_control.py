@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS rental_jobs (
   mode TEXT NOT NULL, duration_limit INTEGER, used_seconds INTEGER NOT NULL DEFAULT 0,
   last_running_at INTEGER, status TEXT NOT NULL, collector TEXT,
   lease_epoch INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL DEFAULT 0,
-  checkpoint INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',
+  agent_session TEXT, checkpoint INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
   FOREIGN KEY(member_id) REFERENCES rental_members(member_id));
 CREATE INDEX IF NOT EXISTS rental_queue_idx ON rental_jobs(status,created_at);
@@ -44,6 +44,9 @@ def init(con, default_routes=None):
     global DEFAULT_ROUTES
     DEFAULT_ROUTES = default_routes or []
     con.executescript(SCHEMA)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(rental_jobs)")}
+    if "agent_session" not in cols:
+        con.execute("ALTER TABLE rental_jobs ADD COLUMN agent_session TEXT")
 
 def _now():
     return int(time.time())
@@ -158,11 +161,17 @@ def change(con, job_id, action, who="admin"):
     new=states[action][1]
     if action=="pause" and job["status"] in ("PENDING","RESUME_QUEUED"):
         new="PAUSED"
-    con.execute("UPDATE rental_jobs SET status=?,updated_at=? WHERE job_id=?", (new,_now(),job_id))
+    if action=="review_resume":
+        con.execute("""UPDATE rental_jobs SET status=?,collector=NULL,agent_session=NULL,
+                     lease_until=0,updated_at=? WHERE job_id=?""",(new,_now(),job_id))
+    else:
+        con.execute("UPDATE rental_jobs SET status=?,updated_at=? WHERE job_id=?", (new,_now(),job_id))
     _event(con,job_id,who,action.upper())
     return _row(con.execute("SELECT * FROM rental_jobs WHERE job_id=?", (job_id,)).fetchone())
 
-def poll(con, name):
+def poll(con, name, agent_session="offline-test"):
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}", agent_session):
+        raise ValueError("session_id invalid")
     con.execute("BEGIN IMMEDIATE")
     try:
         # An expired rental must not be blindly reassigned; the operator must
@@ -182,6 +191,13 @@ def poll(con, name):
         active=con.execute("""SELECT * FROM rental_jobs WHERE collector=? AND
              status IN ('LEASED','RUNNING','PAUSE_REQUESTED') ORDER BY created_at LIMIT 1""",(name,)).fetchone()
         busy=_busy_primary(con,name)
+        if active and active["agent_session"] and active["agent_session"] != agent_session:
+            con.execute("""UPDATE rental_jobs SET status='RECOVERY_REQUIRED',
+                         last_running_at=NULL,updated_at=? WHERE job_id=?""",
+                        (_now(),active["job_id"]))
+            _event(con,active["job_id"],"controller","SESSION_CHANGED")
+            con.commit()
+            return {"action":"PAUSE","reason":"session_changed","job":_row(active)}
         if active:
             if busy or active["status"]=="PAUSE_REQUESTED":
                 if active["status"]!="PAUSE_REQUESTED":
@@ -204,9 +220,9 @@ def poll(con, name):
                 result={"action":"WAIT"}
             else:
                 con.execute("""UPDATE rental_jobs SET status='LEASED',collector=?,
-                    lease_epoch=lease_epoch+1,lease_until=?,updated_at=?
+                    agent_session=?,lease_epoch=lease_epoch+1,lease_until=?,updated_at=?
                     WHERE job_id=? AND status IN ('PENDING','RESUME_QUEUED')""",
-                    (name,_now()+LEASE_SECONDS,_now(),job["job_id"]))
+                    (name,agent_session,_now()+LEASE_SECONDS,_now(),job["job_id"]))
                 _event(con,job["job_id"],"controller","ASSIGN",name)
                 result={"action":"RUN","job":_row(con.execute("SELECT * FROM rental_jobs WHERE job_id=?",
                     (job["job_id"],)).fetchone())}
@@ -219,6 +235,7 @@ def poll(con, name):
 def report(con, name, body):
     job_id=str(body.get("job_id") or "")
     epoch=int(body.get("lease_epoch") or -1)
+    session_id=str(body.get("session_id") or "offline-test")
     outcome=str(body.get("outcome") or "")
     event_id=str(body.get("event_id") or "")
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}",event_id):
@@ -236,8 +253,18 @@ def report(con, name, body):
         job=con.execute("SELECT * FROM rental_jobs WHERE job_id=?",(job_id,)).fetchone()
         if not job or job["collector"]!=name or job["lease_epoch"]!=epoch:
             raise PermissionError("stale job lease")
+        if job["agent_session"] and job["agent_session"]!=session_id:
+            raise PermissionError("wrong worker session")
         if job["lease_until"]<_now() and outcome!="paused":
             raise PermissionError("job lease expired")
+        if job["status"] == "RECOVERY_REQUIRED" and outcome == "paused":
+            # Persist last checkpoint but require operator reconciliation.
+            cp=max(job["checkpoint"],int(body.get("checkpoint") or 0))
+            con.execute("UPDATE rental_jobs SET checkpoint=?,updated_at=? WHERE job_id=?",
+                        (cp,_now(),job_id))
+            _event(con,job_id,name,outcome.upper(),event_id=event_id)
+            con.commit()
+            return {"status":"RECOVERY_REQUIRED","checkpoint":cp}
         if job["status"] not in ("LEASED","RUNNING","PAUSE_REQUESTED"):
             raise ValueError("job not active")
         status={"started":"RUNNING","progress":"RUNNING","paused":"PAUSED",
@@ -302,7 +329,11 @@ def route(handler, method, path, query):
                 if not row or not row["token_hash"] or not handler.headers.get("X-Collector-Token") or row["type"]!="control":
                     handler._json(403,{"ok":False,"error":"collector auth required"})
                     return True
-                out=poll(con,name) if path.endswith("/poll") else report(con,name,b)
+                session_id=str(b.get("session_id") or "")
+                if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}",session_id):
+                    handler._json(400,{"ok":False,"error":"session_id required"})
+                    return True
+                out=poll(con,name,session_id) if path.endswith("/poll") else report(con,name,b)
         else:
             with handler.db_module() as con:
                 if path=="/api/rentals/catalog" and method=="GET":
