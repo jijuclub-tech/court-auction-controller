@@ -1,0 +1,284 @@
+{
+ "site": "www.courtauction.go.kr",
+ "job": "court_dongbu",
+ "family": "court",
+ "guard_site": "court",
+ "rate_key": "court",
+ "verified": false,
+ "note": "법원 단계 위치는 예전 _1ho_dl_loop.py(1920x1080) 상자를 비율로 옮긴 것. 첫 회차는 --minutes 30 으로 사람이 화면을 보며 확인 필요. 법원 선택(동부) 단계는 조각그림 court_dongbu(collector_kb/snippets)로 찾고 못 찾으면 멈춤. region_required=metro(1호: 수도권+인천·부천). 수집기 config.region=metro 여야 돎.",
+ "addr_bar_xy": [
+  420,
+  62
+ ],
+ "allow_hint_xy": false,
+ "download_dir": "%USERPROFILE%\\Downloads",
+ "forbid_words": [
+  "인증서",
+  "결제",
+  "발급",
+  "신청"
+ ],
+ "login": {
+  "top_box_r": [
+   0.55,
+   0.12,
+   0.7,
+   0.18
+  ],
+  "tab_box_r": [
+   0.32,
+   0.28,
+   0.69,
+   0.33
+  ],
+  "card_box_r": [
+   0.31,
+   0.28,
+   0.69,
+   0.93
+  ],
+  "logged_in_words": [
+   "로그아웃"
+  ]
+ },
+ "captcha": {
+  "image_box_r": [
+   0.3,
+   0.3,
+   0.7,
+   0.6
+  ],
+  "input_box_r": [
+   0.25,
+   0.3,
+   0.75,
+   0.75
+  ],
+  "input_words": [
+   "입력",
+   "보안문자"
+  ],
+  "ok_words": [
+   "확인"
+  ],
+  "image_offset_r": [
+   0.0,
+   0.085,
+   0.26,
+   0.11
+  ],
+  "image_offset_verified": false,
+  "field_half_r": [
+   0.075,
+   0.018
+  ],
+  "note_v15": "image_offset_r 는 화면 확인 전 추정값(검수 V4②). 첫 실기 확인 뒤 고치고 image_offset_verified=true 로. 가리기는 찾은 입력칸(field_half_r)만, input_box_r 는 '찾는 범위'일 뿐(W1)."
+ },
+ "steps": [
+  {
+   "name": "home",
+   "type": "goto",
+   "url": "https://www.courtauction.go.kr/",
+   "expect": "courtauction",
+   "wait": [
+    5,
+    7
+   ]
+  },
+  {
+   "name": "home_popups",
+   "type": "popups"
+  },
+  {
+   "name": "login",
+   "type": "login"
+  },
+  {
+   "name": "menu_hover",
+   "type": "hover",
+   "el": "top_menu_gyeongmae",
+   "words": [
+    "경매물건"
+   ],
+   "box_r": [
+    0.0,
+    0.05,
+    1.0,
+    0.48
+   ]
+  },
+  {
+   "name": "maegak",
+   "type": "click",
+   "el": "menu_maegak_yejeong",
+   "words": [
+    "매각예정물건"
+   ],
+   "box_r": [
+    0.1,
+    0.2,
+    0.6,
+    0.9
+   ],
+   "ai": false,
+   "wait": [
+    3,
+    4
+   ],
+   "expect_words": [
+    "매각예정물건"
+   ]
+  },
+  {
+   "name": "court_select",
+   "type": "select_scroll",
+   "target": "서울동부지방법원",
+   "field_box_r": [
+    0.2,
+    0.25,
+    0.9,
+    0.55
+   ],
+   "list_box_r": [
+    0.2,
+    0.3,
+    0.9,
+    0.95
+   ],
+   "max_wheel": 16,
+   "max_key": 40,
+   "refuse_metro": false,
+   "avoid": [],
+   "required": true,
+   "note": "v1.5 C8 과 같은 스크롤 탐색(정확 일치만). 수도권 수집기라 refuse_metro=false"
+  },
+  {
+   "name": "search",
+   "type": "click",
+   "el": "list_search_btn",
+   "words": [
+    "검색"
+   ],
+   "box_r": [
+    0.45,
+    0.6,
+    0.85,
+    0.95
+   ],
+   "ai": false,
+   "wait": [
+    3,
+    4
+   ]
+  },
+  {
+   "name": "items",
+   "type": "items_loop",
+   "rows": {
+    "regex": "\\d{4}\\s*타\\s*경\\s*\\d+",
+    "box_r": [
+     0.2,
+     0.3,
+     0.9,
+     0.97
+    ]
+   },
+   "per_item": [
+    {
+     "type": "shot",
+     "shot": "detail"
+    },
+    {
+     "type": "click",
+     "el": "appraisal_btn",
+     "words": [
+      "감정평가서"
+     ],
+     "box_r": [
+      0.31,
+      0.23,
+      0.58,
+      0.39
+     ],
+     "ai": false,
+     "wait": [
+      3,
+      4.5
+     ]
+    },
+    {
+     "type": "download",
+     "el": "pdf_download",
+     "words": [
+      "다운로드"
+     ],
+     "box_r": [
+      0.2,
+      0.13,
+      0.8,
+      0.42
+     ],
+     "ai": false,
+     "save_dialog_words": [
+      "다른 이름으로 저장",
+      "다른이름으로저장"
+     ],
+     "save_dialog_wait": 8
+    },
+    {
+     "type": "click",
+     "el": "viewer_close",
+     "words": [
+      "닫기"
+     ],
+     "box_r": [
+      0.52,
+      0.78,
+      0.84,
+      1.0
+     ],
+     "ai": false
+    }
+   ],
+   "back": {
+    "name": "back_list",
+    "type": "click",
+    "el": "back_to_list",
+    "words": [
+     "이전"
+    ],
+    "box_r": [
+     0.7,
+     0.23,
+     0.82,
+     0.39
+    ],
+    "ai": false,
+    "wait": [
+     2.5,
+     3.5
+    ]
+   },
+   "next_page": {
+    "el": "pager_next",
+    "words": [
+     "다음"
+    ],
+    "box_r": [
+     0.3,
+     0.85,
+     0.8,
+     1.0
+    ],
+    "ai": false
+   },
+   "max_pages": 10
+  },
+  {
+   "name": "logout",
+   "type": "logout"
+  }
+ ],
+ "region_required": "metro",
+ "site_alive_check": false
+}

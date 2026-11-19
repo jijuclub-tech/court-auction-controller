@@ -1,0 +1,21 @@
+{
+  "rule_id": "stall_escalate_3s_deepseek_10s_gemini",
+  "replaces": "30s unchanged-screen threshold (t529u/t530u)",
+  "site": "courtauction.go.kr",
+  "stall_no_reaction_sec": 3,
+  "deepseek": {
+    "when": "3s with no screen reaction",
+    "level": 1
+  },
+  "gemini": {
+    "when": "still stuck after DeepSeek, within 10s total from stall start",
+    "level": 2,
+    "screenshot": "masked (password boxes blacked out)",
+    "action": "return coordinates; click via Pico2"
+  },
+  "then": "escalate to parent/agent if still stuck",
+  "no_idle_wait_loops": true,
+  "after_every_action": "read the whole screen, including center dialogs, not only the header",
+  "added_at": "2026-11-16T23:58:15+09:00",
+  "source": "t531u/t532u"
+}

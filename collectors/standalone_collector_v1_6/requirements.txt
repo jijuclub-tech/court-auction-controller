@@ -1,0 +1,6 @@
+# 단독 수집기 v1 (무료 부품만). 1호 .venv_af 와 같은 묶음.
+pyserial==3.5
+numpy>=2.0
+pillow>=10.0
+winocr==0.0.15
+# 브라우저 자동화 도구(selenium·playwright 등)는 설치하지 않는다(피코2 입력만).

@@ -1,0 +1,146 @@
+{
+ "site": "flight.naver.com",
+ "window_words": [
+  "네이버 항공권",
+  "NAVER"
+ ],
+ "gap_sec": [
+  3,
+  6
+ ],
+ "disallow": [
+  "/flights/"
+ ],
+ "forbid_words": [
+  "검색"
+ ],
+ "note": "검색 버튼 금지(robots /flights/ 금지). 가격 저장 금지. 2026-11-19 13:24 1호 노트북 실측 성공 순서.",
+ "steps": [
+  {
+   "name": "home",
+   "type": "goto",
+   "url": "https://flight.naver.com/",
+   "expect": "flight.naver.com"
+  },
+  {
+   "name": "home_shot",
+   "type": "shot",
+   "shot": "01-home"
+  },
+  {
+   "name": "departure",
+   "type": "open_close",
+   "el": "departure",
+   "words": [
+    "ICN",
+    "GMP",
+    "출발"
+   ],
+   "box_r": [
+    0.1,
+    0.3,
+    0.6,
+    0.6
+   ],
+   "close": [
+    {
+     "how": "outside",
+     "rx": 0.04,
+     "ry": 0.55
+    }
+   ],
+   "closed_words": [
+    "주요도시"
+   ],
+   "shot": "02-departure-picker"
+  },
+  {
+   "name": "calendar",
+   "type": "open_close",
+   "el": "go_date",
+   "words": [
+    "가는"
+   ],
+   "box_r": [
+    0.4,
+    0.3,
+    0.7,
+    0.6
+   ],
+   "close": [
+    {
+     "how": "outside",
+     "rx": 0.04,
+     "ry": 0.55
+    }
+   ],
+   "closed_words": [
+    "날짜지우기"
+   ],
+   "shot": "03-calendar"
+  },
+  {
+   "name": "passenger",
+   "type": "open_close",
+   "el": "passenger",
+   "words": [
+    "성인"
+   ],
+   "box_r": [
+    0.55,
+    0.3,
+    0.75,
+    0.6
+   ],
+   "close": [
+    {
+     "how": "words",
+     "words": [
+      "취소"
+     ],
+     "box_r": [
+      0.4,
+      0.3,
+      1,
+      0.9
+     ]
+    },
+    {
+     "how": "outside",
+     "rx": 0.04,
+     "ry": 0.55
+    }
+   ],
+   "closed_words": [
+    "좌석등급"
+   ],
+   "shot": "04-passenger-seat"
+  },
+  {
+   "name": "oneway",
+   "type": "click",
+   "el": "oneway_tab",
+   "words": [
+    "편도"
+   ],
+   "box_r": [
+    0.1,
+    0.3,
+    0.5,
+    0.5
+   ],
+   "shot": "05-oneway"
+  }
+ ],
+ "goto_methods": [
+  "click_addr",
+  "ctrl_l"
+ ],
+ "job": "map_naver_flight",
+ "family": "map",
+ "guard_site": "reservation",
+ "ai": false,
+ "rate_key": "map_flight.naver.com",
+ "source": "map/map_kb/tools/sites/flight.naver.com.json (1호 13:24~13:47 실측, 변환)",
+ "site_alive_check": false
+}

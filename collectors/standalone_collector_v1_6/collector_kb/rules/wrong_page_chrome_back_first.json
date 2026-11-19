@@ -1,0 +1,16 @@
+{
+  "rule_id": "wrong_page_chrome_back_first",
+  "site": "courtauction.go.kr",
+  "when": "Landed on a wrong page (인증서 로그인, 전자소송, certificate install, unexpected portal)",
+  "first_remedy": "Click Chrome Back arrow at (26, 58). If still wrong, Alt+Left. Repeat up to a few times.",
+  "do_not": "Do not type a new URL first, do not click 인증서, do not click 예 on 프로그램 설치.",
+  "coords": {
+    "chrome_back": [
+      26,
+      58
+    ],
+    "key": "ALT+LEFT"
+  },
+  "added_at": "2026-11-17T00:01:44+09:00",
+  "source": "t534u"
+}
