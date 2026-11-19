@@ -20,7 +20,7 @@ article button{flex:0 1 auto}.sub{color:#526b84;font-size:18px;margin:9px 0}
 <section><h2>회원 이용코드</h2><div class="row"><input id="member" placeholder="회원 식별자" autocomplete="off"><button id="issue">발급</button></div><div id="issued" role="status"></div></section>
 </main><script>
 (()=>{'use strict';const $=id=>document.getElementById(id);
-let token='',status={AWAITING_APPROVAL:'승인 대기',PENDING:'배정 대기',LEASED:'배정됨',RUNNING:'수집 중',PAUSE_REQUESTED:'일시정지 요청',PAUSED:'일시정지',RESUME_QUEUED:'복귀 대기',DONE:'완료',FAILED:'확인 필요',CANCELLED:'취소'};
+let token='',status={AWAITING_APPROVAL:'승인 대기',PENDING:'배정 대기',LEASED:'배정됨',RUNNING:'수집 중',PAUSE_REQUESTED:'일시정지 요청',PAUSED:'일시정지',RESUME_QUEUED:'복귀 대기',RECOVERY_REQUIRED:'복구 확인 필요',DONE:'완료',FAILED:'확인 필요',CANCELLED:'취소'};
 async function request(url,body){const r=await fetch(url,{method:body?'POST':'GET',headers:{'X-Admin-Token':token,'Content-Type':'application/json'},
 body:body?JSON.stringify(body):undefined,cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'처리 실패');return j}
 async function refresh(){if(!token)return $('notice').textContent='관리자 연결이 필요합니다';
@@ -34,8 +34,8 @@ name.textContent=j.member_id+' · '+j.route_id;
 detail.className='sub';detail.textContent=(status[j.status]||j.status)+(j.collector?' · '+j.collector:'');
 actions.className='row';
 const transitions={AWAITING_APPROVAL:['approve','cancel'],PENDING:['pause','cancel'],LEASED:['pause'],
-RUNNING:['pause'],PAUSED:['resume','cancel'],RESUME_QUEUED:['pause','cancel']};
-const names={approve:'승인',pause:'일시정지',resume:'복귀 요청',cancel:'취소'};
+RUNNING:['pause'],PAUSED:['resume','cancel'],RESUME_QUEUED:['pause','cancel'],RECOVERY_REQUIRED:['review_resume']};
+const names={approve:'승인',pause:'일시정지',resume:'복귀 요청',review_resume:'복구 확인 후 재배정',cancel:'취소'};
 (transitions[j.status]||[]).forEach(action=>{const b=document.createElement('button');b.className='light';b.textContent=names[action];
 b.onclick=async()=>{try{await request('/api/admin/rentals/change',{job_id:j.job_id,action});refresh()}catch(err){$('notice').textContent=err.message}};
 actions.append(b)});e.append(name,detail,actions);jobs.append(e)});
