@@ -106,9 +106,29 @@ def _node_idle(con, name):
         from datetime import datetime, timezone
         seen=datetime.fromisoformat(r["last_seen"]).timestamp()
         state=json.loads(r["last_state"] or "{}")
-        return _now()-seen<180 and state.get("state","idle") in ("idle","waiting","ready")
+        return (_now()-seen<180 and state.get("rental_enabled") is True
+                and state.get("state") in ("idle","waiting","ready"))
     except (ValueError, TypeError, AttributeError):
         return False
+
+def _preferred_collector(con):
+    """Choose only live, opt-in approved control nodes; priority is admin data."""
+    r=con.execute("SELECT v FROM kv WHERE k='rental_priority'").fetchone()
+    try:
+        priority=json.loads(r["v"]) if r else {}
+        if not isinstance(priority,dict):
+            priority={}
+    except (ValueError,TypeError):
+        priority={}
+    candidates=[]
+    for node in con.execute("SELECT name FROM collectors WHERE status='approved' AND type='control'"):
+        name=node["name"]
+        if _node_idle(con,name) and not _busy_primary(con,name):
+            candidates.append((int(priority.get(name,0)),name))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x:(-x[0],x[1]))
+    return candidates[0][1]
 
 def create_member(con, member_id):
     member_id=str(member_id or "").strip()
@@ -241,6 +261,8 @@ def poll(con, name, agent_session="offline-test"):
               ORDER BY CASE status WHEN 'RESUME_QUEUED' THEN 0 ELSE 1 END,created_at LIMIT 1""").fetchone()
             if not job:
                 result={"action":"WAIT"}
+            elif _preferred_collector(con)!=name:
+                result={"action":"WAIT","reason":"higher_priority_collector"}
             else:
                 con.execute("""UPDATE rental_jobs SET status='LEASED',collector=?,
                     agent_session=?,lease_epoch=lease_epoch+1,lease_until=?,updated_at=?
