@@ -1,0 +1,244 @@
+{
+ "site": "www.yanolja.com",
+ "window_words": [
+  "NOL",
+  "야놀자",
+  "yanolja",
+  "네이버 항공권"
+ ],
+ "gap_sec": [
+  3.0,
+  6.0
+ ],
+ "disallow": [
+  "/search/",
+  "/discovery/",
+  "/visitorlogin",
+  "/member/",
+  "/mypage/",
+  "/order/",
+  "/recent-product/",
+  "/reviews/"
+ ],
+ "forbid_words": [
+  "로그인",
+  "예약하기",
+  "결제",
+  "마이",
+  "최근 본 상품",
+  "요즘놀거리",
+  "구매"
+ ],
+ "note": "검색 실행(돋보기·ENTER)·로그인·예약·가격 저장 금지. robots Disallow 열지 않음.",
+ "steps": [
+  {
+   "name": "home",
+   "type": "goto",
+   "url": "https://nol.yanolja.com/",
+   "expect": "yanolja",
+   "wait": [
+    6.0,
+    8.0
+   ]
+  },
+  {
+   "name": "home_shot",
+   "type": "shot",
+   "shot": "01-home"
+  },
+  {
+   "name": "all_category",
+   "type": "open_close",
+   "el": "all_category",
+   "words": [
+    "전체카테고리",
+    "카테고리",
+    "전체"
+   ],
+   "box_r": [
+    0.05,
+    0.12,
+    0.6,
+    0.35
+   ],
+   "avoid": [
+    "전체보기"
+   ],
+   "expect_words": [
+    "국내여행",
+    "해외여행",
+    "NOL티켓",
+    "서비스"
+   ],
+   "close": [
+    {
+     "how": "same"
+    },
+    {
+     "how": "esc"
+    }
+   ],
+   "closed_words": [
+    "해외여행"
+   ],
+   "closed_box_r": [
+    0.05,
+    0.15,
+    0.95,
+    0.6
+   ],
+   "shot": "02-all-category-menu",
+   "learned": "13:46 실측: 같은 단추 다시 누르면 닫힘"
+  },
+  {
+   "name": "search_focus",
+   "type": "open_close",
+   "el": "search_box",
+   "words": [
+    "최대70%",
+    "겨울여행",
+    "제철할인",
+    "검색어를",
+    "입력하세요",
+    "최대"
+   ],
+   "box_r": [
+    0.1,
+    0.08,
+    0.6,
+    0.25
+   ],
+   "avoid": [
+    "전체"
+   ],
+   "anchor": {
+    "words": [
+     "카테고리"
+    ],
+    "box_r": [
+     0.05,
+     0.12,
+     0.6,
+     0.35
+    ],
+    "dx_px": 110,
+    "dy_px": -45
+   },
+   "close": [
+    {
+     "how": "esc"
+    },
+    {
+     "how": "outside",
+     "rx": 0.03,
+     "ry": 0.6
+    }
+   ],
+   "closed_words": [
+    "최근검색",
+    "최근 검색"
+   ],
+   "shot": "03-search-focus-dropdown",
+   "learned": "13:46 실측: OCR '최대70%' 문구로 찾음(배너 문구는 바뀔 수 있어 anchor 예비), ESC로 닫힘"
+  },
+  {
+   "name": "motel_subhome",
+   "type": "nav_click",
+   "el": "motel_icon",
+   "words": [
+    "모텔"
+   ],
+   "box_r": [
+    0.05,
+    0.4,
+    0.95,
+    0.95
+   ],
+   "avoid": [
+    "스파"
+   ],
+   "expect_addr": "motel",
+   "wait": [
+    5.0,
+    7.0
+   ],
+   "shot": "04-motel-subhome"
+  },
+  {
+   "name": "region_modal",
+   "type": "open_close",
+   "el": "region_select",
+   "words": [
+    "지역선택",
+    "지역"
+   ],
+   "box_r": [
+    0.1,
+    0.15,
+    0.9,
+    0.6
+   ],
+   "expect_words": [
+    "서울",
+    "경기",
+    "부산",
+    "제주"
+   ],
+   "close": [
+    {
+     "how": "words",
+     "words": [
+      "×",
+      "X",
+      "닫기"
+     ],
+     "box_r": [
+      0.0,
+      0.05,
+      0.5,
+      0.25
+     ],
+     "icon": true,
+     "snip_wh": [
+      40,
+      40
+     ]
+    },
+    {
+     "how": "esc"
+    },
+    {
+     "how": "outside",
+     "rx": 0.97,
+     "ry": 0.6
+    }
+   ],
+   "closed_words": [
+    "경기",
+    "부산",
+    "강원",
+    "충청"
+   ],
+   "closed_box_r": [
+    0.0,
+    0.1,
+    1,
+    0.9
+   ],
+   "shot": "05-motel-region-modal",
+   "after_shot": "06-motel-after-close",
+   "learned": "13:47 실측: ESC로 안 닫힘, 왼쪽 위 X(599,147 / 0.312,0.136)로 닫힘"
+  }
+ ],
+ "goto_methods": [
+  "click_addr",
+  "ctrl_l"
+ ],
+ "job": "map_yanolja",
+ "family": "map",
+ "guard_site": "reservation",
+ "ai": false,
+ "rate_key": "map_www.yanolja.com",
+ "source": "map/map_kb/tools/sites/yanolja.json (1호 13:24~13:47 실측, 변환)",
+ "site_alive_check": false
+}

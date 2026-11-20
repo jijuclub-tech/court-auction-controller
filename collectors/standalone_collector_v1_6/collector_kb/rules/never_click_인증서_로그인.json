@@ -1,0 +1,17 @@
+{
+  "rule_id": "never_click_인증서_로그인",
+  "site": "courtauction.go.kr",
+  "must": "Use 아이디/비밀번호 (아이디 로그인) tab only. TYPE ID, enter PW via VK.",
+  "never": "Never click 인증서 로그인, 공동인증서, 금융인증서, or 예 on 인증서/프로그램 설치 dialogs (click 아니요 or Esc, then Back if already navigated away).",
+  "logout_alert_only": "Click 예 only on 로그아웃 하시겠습니까? 알림창, not on install dialogs.",
+  "misclick_logged": {
+    "xy": [
+      925,
+      668
+    ],
+    "what": "t532 auto-clicked 예 on 프로그램 설치하시겠습니까, left court site"
+  },
+  "id_login_snippet": "D:\\BIDGUARD\\db\\snippets\\4_1920x1080_scale100_maximized_mon1_아이디_로그인_탭.png",
+  "added_at": "2026-11-17T00:01:44+09:00",
+  "source": "t533u/t534u"
+}

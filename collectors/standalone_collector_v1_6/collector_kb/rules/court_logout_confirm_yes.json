@@ -1,0 +1,18 @@
+{
+  "rule_id": "court_logout_confirm_yes",
+  "site": "courtauction.go.kr",
+  "when": "after clicking 로그아웃",
+  "must": "Look for 알림창 (로그아웃 하시겠습니까?) and click 예 before treating logout as done.",
+  "never": "Do not click 아니요. Do not assume logout succeeded while the dialog is still open.",
+  "click": {
+    "label": "예",
+    "xy": [
+      1024,
+      654
+    ],
+    "snippet": "D:\\BIDGUARD\\db\\snippets\\3_1920x1080_scale100_maximized_mon1_로그아웃_알림창_예.png"
+  },
+  "confirm_header": "Header must show 로그인 and must not show 정한영님 or 로그아웃.",
+  "added_at": "2026-11-16T23:55:06+09:00",
+  "source": "t526u"
+}

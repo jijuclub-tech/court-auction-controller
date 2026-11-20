@@ -1,0 +1,4 @@
+ea82434b5790dfbba6d3ad11390d36b972a9e71eb385f73626ad433a12edbcd1  ./README_KO.md
+713082d427e414171fba865e51b63f3fd195c1e1983bc0257fda49b71e7f2319  ./SECRET_SCAN_KO.txt
+99b2fc7c61ce8199c25d8c73e548370d54a0fb4e0b7a3ba2833ee4ff6c3c92b3  ./local_control_server.py
+f673b3c664eb1b56e7f1be1a4853289fe28289a2099b08c90cc6ee4b0000fc3d  ./tests/test_local_control.py

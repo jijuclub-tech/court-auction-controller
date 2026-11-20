@@ -1,0 +1,31 @@
+{
+ "chrome": {
+  "back": [
+   24,
+   58
+  ],
+  "forward": [
+   59,
+   60
+  ],
+  "reload": [
+   94,
+   60
+  ],
+  "address_bar": [
+   525,
+   60
+  ],
+  "new_tab_plus": [
+   766,
+   19
+  ],
+  "address_bar_read_box": [
+   120,
+   48,
+   1560,
+   72
+  ]
+ },
+ "rule": "클릭 후 주소창을 먼저 읽고 courtauction.go.kr 아니면 뒤로"
+}

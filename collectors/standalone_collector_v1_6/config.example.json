@@ -1,0 +1,82 @@
+{
+  "machine": "jijuclub5",
+  "kb_server": {
+    "url": "http://127.0.0.1:8790",
+    "timeout_sec": 8,
+    "verify_tls": true,
+    "allow_http": true,
+    "host": "127.0.0.1"
+  },
+  "storage": {
+    "nas_root": "X:\\BIDGUARD\\court",
+    "nas_subst": {
+      "drive": "X:",
+      "target": ""
+    },
+    "local_root": "D:\\BIDGUARD\\court",
+    "fallback_root": "C:\\BIDGUARD\\court"
+  },
+  "pico": {
+    "port": "AUTO",
+    "fallback": "COM8",
+    "min_build": "1.0.7"
+  },
+  "collector_id": "metro-01",
+  "region": "metro",
+  "court_account_window": [
+    [
+      "22:00",
+      "23:59"
+    ],
+    [
+      "00:00",
+      "06:00"
+    ]
+  ],
+  "court_account_lock_min": 180,
+  "ntp_check": true,
+  "snippet_scales": {
+    "every": {
+      "2": 10,
+      "4": 100,
+      "8": 300
+    },
+    "fail": {
+      "2": 2,
+      "4": 5,
+      "8": 10
+    },
+    "max_per_scale": 3
+  },
+  "site_alive_retry_sec": 300,
+  "site_grades": {
+    "courtauction": "A"
+  },
+  "refpack": {
+    "dup_dist": 6,
+    "protect_top_pct": 20,
+    "gallery_max_per_step": 3
+  },
+  "crypto": {
+    "key_source": "config",
+    "key": "test",
+    "key_note": "KEY-UPGRADE-AT-2026-12-01T00:00+09:00 이 시각 뒤엔 key_source=dpapi + keys 로 DATA_KEY 입력"
+  },
+  "routing": {
+    "promote_after": 2,
+    "demote_after": 3
+  },
+  "time_budget": {
+    "deficit_sec": 20.0,
+    "slack_factor": 0.6
+  },
+  "adaptive_wait": {
+    "min_samples": 5,
+    "min_gap_sec": 0.3,
+    "court_min_gap_sec": 1.0
+  },
+  "ai": {
+    "local_llm_url": "",
+    "local_llm_model": "qwen2.5:3b"
+  }
+}
