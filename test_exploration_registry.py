@@ -83,6 +83,17 @@ class ExplorationTests(unittest.TestCase):
             self.con.execute("DELETE FROM exploration_versions")
         self.con.rollback()
 
+    def test_same_navigation_new_timestamp_does_not_churn_versions(self):
+        initial=self.submit()
+        e.decide(self.con,initial["proposal_id"],"approve")
+        later=snapshot()
+        later["captured_at"]=datetime.now(timezone.utc).isoformat()
+        second=e.propose(self.con,"independent-1","test-request-00003",
+                         "courtauction",later)
+        reviewed=e.decide(self.con,second["proposal_id"],"approve")
+        self.assertEqual(reviewed["version"],1)
+        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM exploration_versions").fetchone()[0],1)
+
     def test_idempotency_and_site_key_reuse(self):
         first=self.submit()
         again=self.submit()
