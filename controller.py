@@ -47,6 +47,7 @@ import performance
 import site_map_ingest
 import collector_dispatch
 import rental_control
+import member_core
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -125,6 +126,7 @@ def init():
         performance.init(con)
         site_map_ingest.init(con, DATA)
         collector_dispatch.init(con)
+        member_core.init(con)
         rental_control.init(con, COLLECTOR_DEFAULTS.get("routes", []))
 
 
@@ -293,11 +295,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._rental_page("rental.html")
         if method == "GET" and p == "/admin/rentals":
             return self._rental_page("admin-rentals.html")
+        if method == "GET" and p == "/admin/members":
+            return self._rental_page("admin-members.html")
         if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력 (admin 공통라우트 이전)
             return
         if collector_dispatch.route(self, method, p, q):  # 2대 수집기 중앙 업무/ACK/중복방지
             return
         if rental_control.route(self, method, p, q):
+            return
+        if member_core.route(self, method, p, q):
             return
         if p.startswith("/api/admin/"):
             if not self._admin():
