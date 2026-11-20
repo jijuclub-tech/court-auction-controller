@@ -48,6 +48,7 @@ import site_map_ingest
 import collector_dispatch
 import rental_control
 import independent_ai_policy
+import exploration_registry
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -128,6 +129,7 @@ def init():
         collector_dispatch.init(con)
         rental_control.init(con, COLLECTOR_DEFAULTS.get("routes", []))
         independent_ai_policy.init(con, COLLECTOR_DEFAULTS.get("sites", []))
+        exploration_registry.init(con, COLLECTOR_DEFAULTS.get("sites", []))
 
 
 def kv_get(con, k, default=None):
@@ -297,6 +299,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._rental_page("admin-rentals.html")
         if method == "GET" and p == "/admin/independent-ai":
             return self._rental_page("admin-independent-ai.html")
+        if method == "GET" and p == "/admin/exploration":
+            return self._rental_page("admin-exploration.html")
         if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력 (admin 공통라우트 이전)
             return
         if collector_dispatch.route(self, method, p, q):  # 2대 수집기 중앙 업무/ACK/중복방지
@@ -304,6 +308,8 @@ class Handler(BaseHTTPRequestHandler):
         if rental_control.route(self, method, p, q):
             return
         if independent_ai_policy.route(self, method, p, q):
+            return
+        if exploration_registry.route(self, method, p, q):
             return
         if p.startswith("/api/admin/"):
             if not self._admin():
