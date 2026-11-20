@@ -12,7 +12,6 @@ import argparse
 import getpass
 import hashlib
 import hmac
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -113,7 +112,10 @@ def provision_batch(wallet_path, database_path, rows, out_dir, password, rotate=
         if name in seen:
             raise ValueError("duplicate name")
         seen.add(name)
-    out_dir = Path(out_dir).expanduser().resolve()
+    out_dir = Path(out_dir).expanduser()
+    if out_dir.is_symlink():
+        raise ValueError("handoff directory symlink rejected")
+    out_dir = out_dir.absolute()
     out_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name == "posix" and (out_dir.stat().st_mode & 0o077):
         raise PermissionError("handoff directory must be private (0700)")
