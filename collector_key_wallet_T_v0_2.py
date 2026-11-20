@@ -138,7 +138,8 @@ def provision_batch(wallet_path, database_path, rows, out_dir, password, rotate=
             for name, ctype in rows:
                 current = con.execute("SELECT token_hash FROM collectors WHERE name=?", (name,)).fetchone()
                 if current and current["token_hash"] and not rotate:
-                    results.append({"name": name, "result": "kept-existing"})
+                    result = "kept-existing" if name in records else "legacy-key-not-in-wallet"
+                    results.append({"name": name, "result": result})
                     continue
                 token = secrets.token_urlsafe(32)
                 code = secrets.token_urlsafe(32)
