@@ -298,6 +298,38 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(calls, [("claude", "claude-opus-4-1")])
         self.admin("/api/admin/learning/settings", {"writer": "grok", "reviewer": "chatgpt"})
 
+    def test_15_wallet_pairing_and_every_request_auth(self):
+        from pathlib import Path
+        import key_wallet
+        import collector_key_wallet_T_v0_2 as keys
+
+        wallet_file = Path(self.tmp.name) / "key-wallet.json"
+        output = Path(self.tmp.name) / "pairing-out"
+        admin_password = "TEST-PROVISIONING-ADMIN-12345"
+        vault, master = key_wallet.new_wallet(admin_password)
+        key_wallet.write_private(wallet_file, vault, create=True)
+        key_wallet.erase(master)
+        keys.provision_batch(wallet_file, self.c.DB_PATH, [("PAIR-NODE-01", "control")],
+                             output, admin_password)
+        pair = json.loads((output / "PAIR-NODE-01.pair.json").read_text())
+        self.assertEqual(self.call("/api/collector/connect", {"name": "PAIR-NODE-01"})[0], 403)
+        self.assertEqual(self.call("/api/collector/key/claim",
+                                   {"name": "OTHER-NODE", "claim_code": pair["claim_code"]})[0], 403)
+        status, result = self.call("/api/collector/key/claim",
+                                   {"name": "PAIR-NODE-01", "claim_code": pair["claim_code"]})
+        self.assertEqual(status, 200)
+        token = result["collector_token"]
+        self.assertEqual(self.call("/api/collector/key/claim",
+                                   {"name": "PAIR-NODE-01", "claim_code": pair["claim_code"]})[0], 403)
+        self.assertEqual(self.call("/api/collector/connect", {"name": "PAIR-NODE-01"},
+                                   {"X-Collector-Token": token})[0], 200)
+        self.assertEqual(self.call("/api/collector/heartbeat", {"name": "PAIR-NODE-01"},
+                                   {"X-Collector-Token": ""})[0], 403)
+        self.assertEqual(self.call("/api/collector/heartbeat", {"name": "PAIR-NODE-01"},
+                                   {"X-Collector-Token": token})[0], 200)
+        self.assertEqual(self.call("/api/policy?name=PAIR-NODE-01",
+                                   headers={"X-Collector-Token": token})[0], 200)
+
     def test_14_admin_page_has_learning_tab(self):
         with urlopen(self.base + "/admin") as r:
             self.assertIn("학습서", r.read().decode())
