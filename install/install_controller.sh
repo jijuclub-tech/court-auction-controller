@@ -14,7 +14,7 @@
 # Needs: Ubuntu with python3 (3.8 or later; Ubuntu 22.04/24.04 have it). No packages are installed.
 set -euo pipefail
 
-VERSION="S-0.1.2-CONTROL"
+VERSION="S-0.1.2-CONTROL+T-v0.2-KEYS"
 BRANCH="${BRANCH:-main}"
 RAW="https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/${BRANCH}"
 APP="/opt/bidguard/court-auction-controller"
