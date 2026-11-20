@@ -347,7 +347,9 @@ class Handler(BaseHTTPRequestHandler):
             loopback = False
         trusted_proxy = (os.environ.get("CONTROLLER_TRUSTED_HTTPS_PROXY") == "1"
                          and loopback and self.headers.get("X-Forwarded-Proto", "").lower() == "https")
-        if not (isinstance(self.connection, ssl.SSLSocket) or loopback or trusted_proxy):
+        direct_local = (loopback and not self.headers.get("X-Forwarded-For")
+                        and not self.headers.get("Forwarded"))
+        if not (isinstance(self.connection, ssl.SSLSocket) or trusted_proxy or direct_local):
             return self._json(403, {"ok": False, "error": "HTTPS required for device pairing"})
         name = b.get("name", "")
         with db() as con:
