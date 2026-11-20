@@ -269,6 +269,14 @@ def route(handler, method, path, query):
         if method != "POST":
             handler._json(405, {"ok": False})
             return True
+        # A map uploader is a collector: require its registered unique identity
+        # and access token in addition to the existing map-ingest credential.
+        sender = handler.headers.get("X-Collector-Name", "")
+        with handler_db(handler) as con:
+            authorized_sender = handler._collector_ok(con, sender) is not None
+        if not authorized_sender:
+            handler._json(403, {"ok": False, "error": "registered collector name and key required"})
+            return True
         secret = os.environ.get("CONTROLLER_MAP_INGEST_TOKEN", "")
         offered = handler.headers.get("X-Map-Token", "")
         if len(secret) < 24 or not hmac.compare_digest(offered, secret):

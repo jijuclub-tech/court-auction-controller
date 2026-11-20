@@ -33,6 +33,7 @@ import json
 import os
 import re
 import sqlite3
+import ssl
 import threading
 import time
 import uuid
@@ -46,8 +47,9 @@ import learning
 import performance
 import site_map_ingest
 import collector_dispatch
+import collector_key_wallet_T_v0_2 as device_keys
 
-VERSION = "S-0.1.2-CONTROL"
+VERSION = "S-0.1.2-CONTROL+T-v0.2-KEYS"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
@@ -124,6 +126,7 @@ def init():
         performance.init(con)
         site_map_ingest.init(con, DATA)
         collector_dispatch.init(con)
+        device_keys.init_schema(con)
 
 
 def kv_get(con, k, default=None):
@@ -257,7 +260,8 @@ class Handler(BaseHTTPRequestHandler):
         r = con.execute("SELECT * FROM collectors WHERE name=?", (name,)).fetchone()
         if r is None:
             return None
-        if r["token_hash"] and not hmac.compare_digest(r["token_hash"], th(self.headers.get("X-Collector-Token", ""))):
+        token = self.headers.get("X-Collector-Token", "")
+        if not r["token_hash"] or not token or not hmac.compare_digest(r["token_hash"], th(token)):
             return None
         if need_approved and r["status"] != "approved":
             return None
@@ -306,10 +310,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._bot():
                 return self._json(403, {"ok": False})
             return self._answer(p.rsplit("/", 1)[1], self._body(), who="grok_bot", only_kind="ask")
+        if p == "/api/collector/key/claim" and method == "POST":
+            return self._claim_collector_key(self._body())
         if p == "/api/collector/connect" and method == "POST":
             return self._connect(self._body())
         if p == "/api/policy" and method == "GET":
             with db() as con:
+                if self._collector_ok(con, q.get("name", "")) is None:
+                    return self._json(403, {"ok": False, "error": "collector identity and key required"})
                 return self._json(200, kv_get(con, "policy", DEFAULT_POLICY))
         if p.startswith("/api/collector/instruction/") and method == "GET":
             return self._instruction(p.rsplit("/", 1)[1])
@@ -331,23 +339,42 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"ok": False, "error": "not found"})
 
     # ---- existing collector API ----
-    def _connect(self, b):
-        name = str(b.get("name") or "").strip()[:60]
-        if not name:
-            raise ValueError("name required")
+    def _claim_collector_key(self, b):
+        # Remote pairing must cross HTTPS; local loopback is allowed for tests.
+        try:
+            loopback = __import__("ipaddress").ip_address(self.client_address[0]).is_loopback
+        except ValueError:
+            loopback = False
+        trusted_proxy = (os.environ.get("CONTROLLER_TRUSTED_HTTPS_PROXY") == "1"
+                         and loopback and self.headers.get("X-Forwarded-Proto", "").lower() == "https")
+        direct_local = (loopback and not self.headers.get("X-Forwarded-For")
+                        and not self.headers.get("Forwarded"))
+        if not (isinstance(self.connection, ssl.SSLSocket) or trusted_proxy or direct_local):
+            return self._json(403, {"ok": False, "error": "HTTPS required for device pairing"})
+        name = b.get("name", "")
         with db() as con:
-            r = con.execute("SELECT * FROM collectors WHERE name=?", (name,)).fetchone()
+            token, result = device_keys.redeem(con, name, b.get("claim_code", ""))
+            if not token:
+                audit(con, "pairing", "denied claim for registered node")
+                return self._json(403, {"ok": False, "error": "device pairing rejected"})
+            audit(con, name, "device pairing completed")
+        # Returned once only over HTTPS / local-only test channel; never logged.
+        return self._json(200, {"ok": True, "name": name, "collector_token": token})
+
+    def _connect(self, b):
+        name = str(b.get("name") or "").strip()
+        if not device_keys.NAME.fullmatch(name):
+            return self._json(403, {"ok": False, "error": "registered collector name required"})
+        with db() as con:
+            r = self._collector_ok(con, name)
             if r is None:
-                con.execute("INSERT INTO collectors(name,type,status,first_seen,last_seen) VALUES(?,?,?,?,?)",
-                            (name, str(b.get("type") or "")[:20], "pending", now(), now()))
-                audit(con, name, "connect: new collector waiting for approval")
-                return self._json(200, {"ok": True, "result": {"registered": False, "status": "pending"}})
-            if self._collector_ok(con, name, need_approved=False) is None:
-                return self._json(403, {"ok": False, "result": {"registered": False}})
-            con.execute("UPDATE collectors SET last_seen=?, type=? WHERE name=?", (now(), str(b.get("type") or r["type"])[:20], name))
-            n = con.execute("SELECT COUNT(*) FROM instructions WHERE name=? AND status='pending'", (name,)).fetchone()[0]
-            return self._json(200, {"ok": True, "result": {"registered": r["status"] == "approved",
-                                                           "status": r["status"], "pending_instructions": n}})
+                return self._json(403, {"ok": False, "error": "registered collector name and key required"})
+            con.execute("UPDATE collectors SET last_seen=?, type=? WHERE name=?",
+                        (now(), str(b.get("type") or r["type"])[:20], name))
+            n = con.execute("SELECT COUNT(*) FROM instructions WHERE name=? AND status='pending'",
+                            (name,)).fetchone()[0]
+            return self._json(200, {"ok": True, "result": {"registered": True,
+                "status": "approved", "pending_instructions": n}})
 
     def _instruction(self, name):
         with db() as con:
@@ -540,7 +567,8 @@ class Handler(BaseHTTPRequestHandler):
             with db() as con:
                 return self._json(200, {
                     "ok": True, "version": VERSION, "rev": kv_get(con, "rev", "0"),
-                    "collectors": [dict(r) for r in con.execute("SELECT name,type,status,first_seen,last_seen,last_state,version FROM collectors ORDER BY name")],
+                    "collectors": [dict(r) for r in con.execute("SELECT name,type,status,first_seen,last_seen,version,"
+                                     "CASE WHEN token_hash<>'' THEN 1 ELSE 0 END has_access_key FROM collectors ORDER BY name")],
                     "calls": [self._call_row(r, with_shot=r["status"] == "pending") for r in
                               con.execute("SELECT * FROM calls ORDER BY created_at DESC LIMIT 40")],
                     "instructions": [dict(r) for r in con.execute("SELECT * FROM instructions ORDER BY created_at DESC LIMIT 30")],
@@ -559,6 +587,8 @@ class Handler(BaseHTTPRequestHandler):
         if learning.admin_route(self, method, p, q, b):
             return
         if p == "/api/admin/collector":
+            if "token" in b:
+                raise ValueError("issue collector keys with the encrypted local wallet CLI")
             name = str(b.get("name") or "")[:60]
             status = b.get("status", "approved")
             if status not in ("approved", "pending", "blocked") or not name:
@@ -567,8 +597,6 @@ class Handler(BaseHTTPRequestHandler):
                 con.execute("INSERT INTO collectors(name,type,status,first_seen) VALUES(?,?,?,?) "
                             "ON CONFLICT(name) DO UPDATE SET status=excluded.status",
                             (name, str(b.get("type") or "control")[:20], status, now()))
-                if "token" in b:
-                    con.execute("UPDATE collectors SET token_hash=? WHERE name=?", (th(str(b["token"])), name))
                 audit(con, "manager", "collector %s -> %s" % (name, status))
             return self._json(200, {"ok": True})
         if p.startswith("/api/admin/answer/"):

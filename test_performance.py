@@ -60,10 +60,13 @@ class PerformanceAPITests(unittest.TestCase):
             return error.code, json.loads(error.read())
 
     def register(self, name, token):
-        self.call("/api/collector/connect", {"name": name, "type": "control"})
         code, _ = self.call("/api/admin/collector", {"name": name, "status": "approved",
-                           "type": "control", "token": token}, admin=True)
+                           "type": "control"}, admin=True)
         self.assertEqual(code, 200)
+        # Synthetic verifier in isolated test DB. Real keys are issued by the wallet CLI.
+        with self.c.db() as con:
+            con.execute("UPDATE collectors SET token_hash=? WHERE name=?",
+                        (self.c.th(token), name))
 
     def sample(self, name="서울1호기", event_id="evt100", **kw):
         from performance import _today
