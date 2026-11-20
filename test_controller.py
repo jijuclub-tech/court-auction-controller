@@ -33,6 +33,7 @@ class ControllerTests(unittest.TestCase):
         import controller
         cls.c = importlib.reload(controller)
         cls.c.init()
+        cls.test_tokens = {}
         port = free_port()
         cls.srv = ThreadingHTTPServer(("127.0.0.1", port), cls.c.Handler)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
@@ -45,6 +46,16 @@ class ControllerTests(unittest.TestCase):
 
     def call(self, path, body=None, headers=None):
         h = {"Content-Type": "application/json", **(headers or {})}
+        if path.startswith("/api/collector/") or path.startswith("/api/policy") or path.startswith("/api/ladder/") or path.startswith("/api/escalations"):
+            from urllib.parse import urlsplit, parse_qs
+            request_path = urlsplit(path)
+            name = (body or {}).get("name", "") if isinstance(body, dict) else ""
+            if not name:
+                name = parse_qs(request_path.query).get("name", [""])[0]
+            if not name and request_path.path.startswith("/api/collector/instruction/"):
+                name = request_path.path.rsplit("/", 1)[-1]
+            if name in self.test_tokens and "X-Collector-Token" not in h:
+                h["X-Collector-Token"] = self.test_tokens[name]
         req = Request(self.base + path, data=json.dumps(body).encode() if body is not None else None,
                       headers=h, method="POST" if body is not None else "GET")
         try:
@@ -57,8 +68,12 @@ class ControllerTests(unittest.TestCase):
         return self.call(path, body, {"X-Admin-Token": "adm"})
 
     def register(self, name, ctype="control"):
-        self.call("/api/collector/connect", {"name": name, "type": ctype})
         self.assertEqual(self.admin("/api/admin/collector", {"name": name, "status": "approved", "type": ctype})[0], 200)
+        synthetic_key = "synthetic-device-key-" + name + "-A" * 5
+        with self.c.db() as con:
+            con.execute("UPDATE collectors SET token_hash=? WHERE name=?",
+                        (self.c.th(synthetic_key), name))
+        self.test_tokens[name] = synthetic_key
 
     def test_01_health_and_admin_guard(self):
         self.assertEqual(self.call("/api/health")[1]["ok"], True)
@@ -66,7 +81,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_02_connect_needs_approval_then_instruction_and_report(self):
         st, d = self.call("/api/collector/connect", {"name": "jiju01", "type": "control"})
-        self.assertFalse(d["result"]["registered"])
+        self.assertEqual(st, 403)  # unknown device must not be auto-registered
         self.assertEqual(self.call("/api/collector/instruction/jiju01")[0], 403)
         self.register("jiju01")
         self.assertTrue(self.call("/api/collector/connect", {"name": "jiju01", "type": "control"})[1]["result"]["registered"])
@@ -144,14 +159,17 @@ class ControllerTests(unittest.TestCase):
         self.admin("/api/admin/program", {"version": "S-0.3.31-CONTROL", "file": "collector_S0331.zip", "approved": True})
         u = self.call("/api/collector/updates?name=p1&rev=x")[1]
         self.assertEqual(u["program"]["sha256"], d["sha256"])
-        with urlopen(self.base + "/api/collector/update_file/collector_S0331.zip?name=p1") as r:
+        with urlopen(Request(self.base + "/api/collector/update_file/collector_S0331.zip?name=p1",
+                             headers={"X-Collector-Token": self.test_tokens["p1"]})) as r:
             self.assertEqual(r.read(), b"PK test")
         self.assertEqual(self.admin("/api/admin/program", {"version": "v", "file": "../x"})[0], 400)
 
     def test_08_token_bound_collector(self):
-        self.admin("/api/admin/collector", {"name": "t1", "status": "approved", "token": "abc"})
-        self.assertEqual(self.call("/api/collector/instruction/t1")[0], 403)
-        self.assertEqual(self.call("/api/collector/instruction/t1", headers={"X-Collector-Token": "abc"})[0], 200)
+        self.register("t1")
+        self.assertEqual(self.call("/api/collector/instruction/t1", headers={"X-Collector-Token": ""})[0], 403)
+        self.assertEqual(self.call("/api/collector/instruction/t1", headers={"X-Collector-Token": "incorrect"})[0], 403)
+        self.assertEqual(self.call("/api/collector/instruction/t1", headers={"X-Collector-Token": self.test_tokens["t1"]})[0], 200)
+        self.assertEqual(self.call("/api/policy", headers={"X-Collector-Token": ""})[0], 403)
 
     def test_10_program_upload_and_defaults(self):
         req = Request(self.base + "/api/admin/program_upload?file=pkg_S0332.zip&version=S-0.3.32-CONTROL&approved=1",
