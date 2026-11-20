@@ -54,7 +54,7 @@ def prepare_batch(path, root):
     return out, expected
 
 
-def send(url, token, payload, expected):
+def send(url, token, payload, expected, collector_name=None, collector_token=None):
     endpoint = url.rstrip("/") + "/api/v1/site-maps/batches"
     p = urlsplit(endpoint)
     if p.scheme != "https":
@@ -63,6 +63,8 @@ def send(url, token, payload, expected):
     req = Request(endpoint, data=raw, method="POST", headers={
         "Content-Type": "application/json",
         "X-Map-Token": token,
+        "X-Collector-Name": collector_name or "",
+        "X-Collector-Token": collector_token or "",
     })
     try:
         with urlopen(req, timeout=40) as resp:
@@ -113,8 +115,10 @@ def main(argv=None):
         return 2
     if not args.dry_run:
         token = os.environ.get("MAP_INGEST_TOKEN", "")
-        if len(token) < 24 or not args.endpoint:
-            print("Set MAP_INGEST_URL and a 24+ character MAP_INGEST_TOKEN securely", file=sys.stderr)
+        collector_name = os.environ.get("BIDGUARD_COLLECTOR_NAME", "")
+        collector_token = os.environ.get("BIDGUARD_COLLECTOR_TOKEN", "")
+        if len(token) < 24 or not args.endpoint or not collector_name or len(collector_token) < 40:
+            print("Set MAP_INGEST_URL, MAP_INGEST_TOKEN and paired BIDGUARD_COLLECTOR_NAME/TOKEN", file=sys.stderr)
             return 2
     sent = 0
     failed = 0
@@ -133,7 +137,7 @@ def main(argv=None):
                 print(src.name, "validated; manifest_sha256=", sha)
                 sent += 1
                 continue
-            ack = send(args.endpoint, token, payload, sha)
+            ack = send(args.endpoint, token, payload, sha, collector_name, collector_token)
             write_ack(receipt_path, ack)
             print(src.name, "stored and ACKed:", sha, "(NAS/Drive backup not yet confirmed)")
             sent += 1
