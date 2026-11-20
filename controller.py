@@ -49,7 +49,7 @@ import site_map_ingest
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
 
-VERSION = "S-0.1.2-CONTROL"
+VERSION = "S-0.1.2-CONTROL+T-v0.2-KEYS"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
