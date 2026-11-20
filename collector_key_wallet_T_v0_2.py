@@ -27,7 +27,7 @@ def _wallet():
     import key_wallet
     return key_wallet
 
-NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}$")
+NAME = re.compile(r"^[A-Za-z0-9가-힣][A-Za-z0-9가-힣_.-]{0,59}$")
 TYPES = {"control", "supply", "manual", "remote", "accessibility"}
 AAD = b"BIDGUARD-COLLECTOR-v2:"
 CODE_AAD = b"BIDGUARD-ONE-TIME-PAIRING-v2:"
@@ -53,7 +53,7 @@ def code_hash(code: str) -> str:
 
 def check_name(name):
     if not isinstance(name, str) or not NAME.fullmatch(name):
-        raise ValueError("invalid collector name (ASCII letters, digits, ._-; 1-60)")
+        raise ValueError("invalid collector name (letters (including Hangul), digits, ._-; 1-60)")
     return name
 
 
