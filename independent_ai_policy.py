@@ -297,7 +297,12 @@ def route(h,method,path,query):
                 return True
             if method=="GET" and path.endswith("/options"):
                 sid=str(query.get("site_id") or "")
-                result={"settings":config,"key_available":_key_status(con).get(config["key_source"],False)}
+                stored=con.execute("SELECT v FROM kv WHERE k='sites'").fetchone()
+                sites=json.loads(stored[0]) if stored else _defaults_sites
+                public_sites=[{"site_id":str(item.get("site_id")),"name":str(item.get("name") or "")[:90]}
+                         for item in sites if isinstance(item,dict) and SITE_RE.fullmatch(str(item.get("site_id") or ""))]
+                result={"settings":config,"key_available":_key_status(con).get(config["key_source"],False),
+                        "sites":public_sites}
                 if sid:
                     result["site"]=_site(con,sid)
                     result["learning"]=learning.for_visit(con,name,sid,query.get("version"))
