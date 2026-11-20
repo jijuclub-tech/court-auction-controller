@@ -13,6 +13,7 @@ import secrets
 import sqlite3
 import time
 import uuid
+import member_core
 
 LEASE_SECONDS = 180
 MAX_RESERVATION_SECONDS = 12 * 3600
@@ -69,7 +70,10 @@ def _member(con, header):
         return None
     digest = _hash(token)
     # Do not fetch raw tokens into logs.
-    row = con.execute("SELECT member_id FROM rental_members WHERE access_hash=? AND active=1", (digest,)).fetchone()
+    row = con.execute("""SELECT r.member_id FROM rental_members r
+                          JOIN members m ON m.member_id=r.member_id
+                          WHERE r.access_hash=? AND r.active=1
+                            AND m.account_status IN ('active','pilot')""",(digest,)).fetchone()
     return row["member_id"] if row else None
 
 def _catalog(con):
@@ -159,6 +163,7 @@ def create_member(con, member_id):
     member_id=str(member_id or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]{3,80}", member_id):
         raise ValueError("member_id invalid")
+    member_core.ensure_pilot_member(con,member_id)
     token=secrets.token_urlsafe(32)
     con.execute("""INSERT INTO rental_members(member_id,access_hash,active,created_at)
                    VALUES(?,?,1,?) ON CONFLICT(member_id) DO UPDATE SET
@@ -166,6 +171,9 @@ def create_member(con, member_id):
     return {"member_id":member_id,"access_code":token}
 
 def request(con, member_id, body):
+    profile=member_core.profile(con,member_id)
+    if profile["status"] not in ("active","pilot"):
+        raise ValueError("회원 상태를 확인해 주세요")
     route=str(body.get("route_id") or "").strip()
     if con.execute("SELECT COUNT(*) FROM rental_jobs WHERE member_id=? AND status NOT IN ('DONE','FAILED','CANCELLED')", (member_id,)).fetchone()[0] >= 3:
         raise ValueError("진행 중 신청은 3건까지 가능합니다")
