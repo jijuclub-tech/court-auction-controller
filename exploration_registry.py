@@ -108,7 +108,8 @@ def _validate(snapshot,site):
         raise ValueError("수집시각 오류")
     try:
         stamp=datetime.fromisoformat(snapshot["captured_at"].replace("Z","+00:00"))
-        if stamp.tzinfo is None or abs(stamp.timestamp()-time.time())>86400*31:
+        age_seconds=time.time()-stamp.timestamp()
+        if stamp.tzinfo is None or age_seconds < -86400 or age_seconds > 86400*730:
             raise ValueError("수집시각 범위 오류")
     except (ValueError,OverflowError) as exc:
         raise ValueError("수집시각 오류") from exc
