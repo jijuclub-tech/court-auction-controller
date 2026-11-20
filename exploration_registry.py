@@ -165,11 +165,11 @@ def propose(con,collector,request_key,site_id,snapshot):
     checksum=hashlib.sha256(payload).hexdigest()
     con.execute("SAVEPOINT exploration_proposal")
     try:
-        prior=con.execute("""SELECT proposal_id,content_sha256,status FROM exploration_proposals
+        prior=con.execute("""SELECT proposal_id,site_id,content_sha256,status FROM exploration_proposals
                              WHERE collector=? AND request_key=?""",
                           (collector,request_key)).fetchone()
         if prior:
-            if prior["content_sha256"]!=checksum:
+            if prior["content_sha256"]!=checksum or prior["site_id"]!=site_id:
                 raise ValueError("같은 요청번호에 다른 탐색자료를 등록할 수 없습니다")
             out={"proposal_id":prior["proposal_id"],"status":prior["status"],
                  "duplicate":True,"sha256":checksum}
@@ -248,11 +248,20 @@ def sync(con,collector,site_id,have_version=0):
     return response
 
 def catalog(con):
-    rows=con.execute("""SELECT v.site_id,v.version,v.content_sha256,v.approved_at
+    """All registered sites, including sites with only an approved learning book."""
+    row=con.execute("SELECT v FROM kv WHERE k='sites'").fetchone()
+    sites=json.loads(row[0]) if row else DEFAULT_SITES
+    versions=con.execute("""SELECT v.site_id,v.version,v.content_sha256,v.approved_at
         FROM exploration_versions v INNER JOIN
         (SELECT site_id,MAX(version) m FROM exploration_versions GROUP BY site_id) recent
         ON recent.site_id=v.site_id AND recent.m=v.version ORDER BY v.site_id""").fetchall()
-    return [dict(x) for x in rows]
+    known={r["site_id"]:dict(r) for r in versions}
+    out=[]
+    for site in (sites if isinstance(sites,list) else []):
+        sid=site.get("site_id") if isinstance(site,dict) else None
+        if isinstance(sid,str) and SITE_ID.fullmatch(sid):
+            out.append({"site_id":sid,"version":0,**known.get(sid,{})})
+    return out
 
 def state(con):
     pending=con.execute("""SELECT proposal_id,collector,site_id,content_sha256,payload,
