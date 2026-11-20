@@ -208,12 +208,19 @@ def decide(con,proposal_id,action,actor="admin"):
             raise ValueError("이미 검토된 탐색 제안입니다")
         version=None
         if action=="approve":
-            last=con.execute("""SELECT COALESCE(MAX(version),0) FROM exploration_versions
-                                 WHERE site_id=?""",(p["site_id"],)).fetchone()[0]
-            version=last+1
-            con.execute("""INSERT INTO exploration_versions(site_id,version,proposal_id,content_sha256,
-                         payload,approved_at) VALUES(?,?,?,?,?,?)""",
-                        (p["site_id"],version,proposal_id,p["content_sha256"],p["payload"],_now()))
+            current=con.execute("""SELECT version,payload FROM exploration_versions
+                     WHERE site_id=? ORDER BY version DESC LIMIT 1""",(p["site_id"],)).fetchone()
+            incoming=json.loads(p["payload"])
+            previous=json.loads(current["payload"]) if current else None
+            keys=("url","page_kind","structure_sha256","elements")
+            same=bool(previous) and all(previous.get(k)==incoming.get(k) for k in keys)
+            if same:
+                version=int(current["version"])
+            else:
+                version=(int(current["version"]) if current else 0)+1
+                con.execute("""INSERT INTO exploration_versions(site_id,version,proposal_id,content_sha256,
+                             payload,approved_at) VALUES(?,?,?,?,?,?)""",
+                            (p["site_id"],version,proposal_id,p["content_sha256"],p["payload"],_now()))
         con.execute("""UPDATE exploration_proposals SET status=?,decided_at=?,decided_by=?
                        WHERE proposal_id=?""",
                     ("APPROVED" if action=="approve" else "REJECTED",_now(),actor,proposal_id))
