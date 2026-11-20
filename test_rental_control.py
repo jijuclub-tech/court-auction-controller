@@ -5,6 +5,7 @@ import time
 import unittest
 from datetime import datetime, timezone
 import collector_dispatch
+import member_core
 import rental_control as rent
 
 ROUTES=[{"route_id":"court_appraisal","name":"감정평가서 자료"},{"route_id":"court_results","name":"매각결과 검색"}]
@@ -17,6 +18,7 @@ class RentalControlTests(unittest.TestCase):
         self.db.execute("""CREATE TABLE collectors(name TEXT PRIMARY KEY,type TEXT,status TEXT,token_hash TEXT,
          first_seen TEXT,last_seen TEXT,last_state TEXT,version TEXT)""")
         collector_dispatch.init(self.db)
+        member_core.init(self.db)
         rent.init(self.db,ROUTES)
         self.db.execute("INSERT INTO collectors(name,type,status,token_hash,last_seen,last_state) VALUES(?,?,?,?,?,?)",
           ("c1","control","approved","sha256-of-device-token",datetime.now(timezone.utc).isoformat(timespec="seconds"),
