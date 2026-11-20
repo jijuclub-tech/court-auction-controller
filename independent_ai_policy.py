@@ -7,6 +7,7 @@ SQLite, response JSON, or the collector.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -43,6 +44,9 @@ CREATE TABLE IF NOT EXISTS independent_ai_calls (
   created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS independent_ai_limit_idx
   ON independent_ai_calls(collector,day_utc);
+CREATE TABLE IF NOT EXISTS independent_ai_key_store (
+  alias TEXT PRIMARY KEY, nonce TEXT NOT NULL, sealed_key TEXT NOT NULL,
+  updated_at INTEGER NOT NULL);
 """
 SITE_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 COL_RE = re.compile(r"^[A-Za-z0-9._@:-]{2,80}$")
@@ -65,9 +69,63 @@ def _settings(con):
             out[k]=saved[k]
     return out
 
-def _key_status():
-    return {label:bool(os.environ.get(env_name)) if env_name else False
-            for label,env_name in KEY_SOURCES.items()}
+def _wrap_key():
+    """Dedicated runtime unlock key; issued on controller, never in Git/DB."""
+    raw=os.environ.get("BIDGUARD_AI_WRAP_KEY","")
+    try:
+        key=base64.b64decode(raw,validate=True)
+    except Exception:
+        key=b""
+    if len(key)!=32:
+        raise RuntimeError("관제탑 암호화 키를 먼저 연결하세요")
+    return key
+
+def _sealing():
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError as exc:
+        raise RuntimeError("cryptography 설치 확인 필요") from exc
+    return AESGCM
+
+def _save_secret(con,alias,secret):
+    if alias not in ("controller_primary","controller_backup"):
+        raise ValueError("관제탑 키 종류를 선택해 주세요")
+    if not isinstance(secret,str) or not 16<=len(secret)<=256:
+        raise ValueError("API 키를 확인해 주세요")
+    nonce=secrets.token_bytes(12)
+    cipher=_sealing()(_wrap_key()).encrypt(nonce,secret.encode("utf-8"),
+                                            ("independent-ai:"+alias).encode())
+    con.execute("""INSERT INTO independent_ai_key_store(alias,nonce,sealed_key,updated_at)
+                   VALUES(?,?,?,?) ON CONFLICT(alias) DO UPDATE SET
+                   nonce=excluded.nonce,sealed_key=excluded.sealed_key,
+                   updated_at=excluded.updated_at""",
+                (alias,base64.b64encode(nonce).decode(),
+                 base64.b64encode(cipher).decode(),int(time.time())))
+    return True
+
+def _secret(con,alias):
+    if alias not in KEY_SOURCES or alias=="personal":
+        return ""
+    row=con.execute("SELECT nonce,sealed_key FROM independent_ai_key_store WHERE alias=?",
+                    (alias,)).fetchone()
+    if row:
+        try:
+            return _sealing()(_wrap_key()).decrypt(base64.b64decode(row["nonce"]),
+                base64.b64decode(row["sealed_key"]),
+                ("independent-ai:"+alias).encode()).decode("utf-8")
+        except Exception as exc:
+            raise RuntimeError("암호화된 API 키를 열지 못했습니다") from exc
+    return os.environ.get(KEY_SOURCES[alias],"").strip()
+
+def _key_status(con):
+    out={}
+    for label,env_name in KEY_SOURCES.items():
+        if label=="personal":
+            out[label]=False
+        else:
+            row=con.execute("SELECT 1 FROM independent_ai_key_store WHERE alias=?",(label,)).fetchone()
+            out[label]=bool(row) or bool(os.environ.get(env_name))
+    return out
 
 def _choose_config(con,payload):
     model=payload.get("model")
@@ -194,23 +252,37 @@ def _call_gemini(key, model, instruction, site, book):
         "total_tokens":usage.get("totalTokenCount")}
 
 def route(h,method,path,query):
-    if path not in ("/api/admin/independent-ai","/api/collector/independent-ai/options",
+    if path not in ("/api/admin/independent-ai","/api/admin/independent-ai/key",
+                    "/api/collector/independent-ai/options",
                     "/api/collector/independent-ai/plan"):
         return False
     try:
-        if path=="/api/admin/independent-ai":
+        if path.startswith("/api/admin/independent-ai"):
             if not h._admin():
                 h._json(403,{"ok":False,"error":"관리자 권한이 필요합니다"})
                 return True
             with h.db_module() as con:
-                if method=="GET":
+                if path.endswith("/key"):
+                    if method!="POST":
+                        h._json(405,{"ok":False});return True
+                    # Direct TLS or local reverse proxy only; never accept secrets
+                    # on an openly exposed plain HTTP service.
+                    if h.client_address[0] not in ("127.0.0.1","::1") and not isinstance(
+                            h.connection, __import__("ssl").SSLSocket):
+                        h._json(403,{"ok":False,"error":"보안 연결이 필요합니다"})
+                        return True
+                    body=h._body()
+                    _save_secret(con,str(body.get("key_source") or ""),body.get("api_key"))
+                    data=_settings(con)
+                elif method=="GET":
                     data=_settings(con)
                 elif method=="POST":
                     data=_choose_config(con,h._body())
                 else:
                     h._json(405,{"ok":False});return True
+                status=_key_status(con)
             h._json(200,{"ok":True,"settings":data,"available_models":list(MODELS),
-                         "key_status":_key_status()})
+                         "key_status":status})
             return True
         body=h._body() if method=="POST" else {}
         name=str((body.get("name") if method=="POST" else query.get("name")) or "")
@@ -225,7 +297,7 @@ def route(h,method,path,query):
                 return True
             if method=="GET" and path.endswith("/options"):
                 sid=str(query.get("site_id") or "")
-                result={"settings":config,"key_available":_key_status().get(config["key_source"],False)}
+                result={"settings":config,"key_available":_key_status(con).get(config["key_source"],False)}
                 if sid:
                     result["site"]=_site(con,sid)
                     result["learning"]=learning.for_visit(con,name,sid,query.get("version"))
@@ -247,7 +319,7 @@ def route(h,method,path,query):
             learning_context=learning.for_visit(con,name,site_id,None)
             book=learning_context.get("book")
             book_version=learning_context.get("version",0)
-            key=os.environ.get(KEY_SOURCES[config["key_source"]],"")
+            key=_secret(con,config["key_source"])
             if not key:
                 h._json(503,{"ok":False,"error":"관제탑 AI 키가 아직 연결되지 않았습니다"})
                 return True
