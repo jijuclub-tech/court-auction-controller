@@ -21,7 +21,11 @@ import sqlite3
 import sys
 import time
 
-import key_wallet as wallet
+def _wallet():
+    # The normal controller remains stdlib-only until an administrator pairs a device.
+    # Missing optional cryptography must not stop its health/admin/collector routes.
+    import key_wallet
+    return key_wallet
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}$")
 TYPES = {"control", "supply", "manual", "remote", "accessibility"}
@@ -103,6 +107,7 @@ def provision_batch(wallet_path, database_path, rows, out_dir, password, rotate=
     Existing working tokens are never overwritten unless rotate=True.
     A private pairing package is created for each newly provisioned collector.
     """
+    wallet = _wallet()
     if not rows or len(rows) > 200 or not 300 <= seconds <= 604800:
         raise ValueError("invalid batch or pairing lifetime")
     seen = set()
@@ -193,6 +198,7 @@ def redeem(con, name, claim_code, clock=None):
             con.execute("UPDATE collector_key_claims SET failures=failures+1 WHERE name=?", (name,))
             con.execute("COMMIT")
             return None, "denied"
+        wallet = _wallet()
         key = hashlib.sha256(CODE_AAD + claim_code.encode("ascii")).digest()
         try:
             token = wallet.open_seal(key, json.loads(r["encrypted_token"]), CODE_AAD + name.encode("ascii")).decode("ascii")
@@ -249,6 +255,7 @@ def main(argv=None):
             for item in status(a.db):
                 print(item)
             return 0
+        wallet = _wallet()
         wallet.require_tty()
         pw = getpass.getpass("관제기 키 지갑 관리자 암호: ")
         # For revoke also authenticate with the encrypted master wallet.
