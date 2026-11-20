@@ -379,8 +379,8 @@ def route(h,method,path,query):
                                   not 1<=len(instruction.strip())<=1500):
                 raise ValueError("작업 내용을 확인해 주세요")
             model=str(body.get("model") or config["model"])
-            if model not in config["models"]:
-                raise ValueError("승인된 모델을 선택해 주세요")
+            if model!=config["model"] or model not in config["models"]:
+                raise ValueError("관제탑에서 선택한 모델만 사용할 수 있습니다")
             site_id=str(body.get("site_id") or "")
             site=_site(con,site_id)
             learning_context=learning.for_visit(con,name,site_id,None)
