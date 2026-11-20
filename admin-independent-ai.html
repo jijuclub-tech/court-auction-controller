@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BIDGUARD · 수집기 AI 설정</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fc;color:#142943;font-family:system-ui,"Malgun Gothic",sans-serif;font-size:19px}
+header{background:#0b2749;color:#fff;padding:23px 30px;font-size:28px;font-weight:800}
+header a{float:right;color:#e7eef9;text-decoration:none;font-size:19px}
+main{max-width:820px;margin:30px auto;padding:0 18px}
+h1{font-size:35px;margin:0 0 22px}h2{font-size:25px;margin:0 0 18px}
+section{background:#fff;padding:28px;border-radius:21px;margin-bottom:22px;box-shadow:0 6px 19px #102a4f13}
+label{display:block;font-size:20px;font-weight:750;margin:18px 0 8px}
+input,select{width:100%;font-size:20px;padding:15px 16px;min-height:58px;border:1px solid #bfcddd;border-radius:12px;background:white;color:#17314f}
+input[type=checkbox]{width:23px;height:23px;min-height:auto}
+button{background:#0c3259;color:#fff;font-size:20px;font-weight:750;border:0;padding:15px 24px;min-height:55px;border-radius:13px;cursor:pointer}
+button.secondary{background:#eaf1f9;color:#163b60}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+#message{font-size:20px;color:#17668f;min-height:28px}
+@media(max-width:550px){header{font-size:24px}header a{font-size:17px;float:none;display:block;padding-top:10px}section{padding:23px 18px}h1{font-size:30px}.row>*{flex-basis:100%}}
+</style></head>
+<body><header>BIDGUARD <a href="/admin">관제탑</a></header>
+<main><h1>독립형 수집기 AI</h1>
+<section><h2>관리자 연결</h2><div class="row">
+<input id="adminToken" type="password" placeholder="관리자 인증" autocomplete="off">
+<button id="connect">연결</button></div></section>
+<section><h2>모델 · 키 선택</h2>
+<label for="model">Gemini 모델</label><select id="model"></select>
+<label for="source">API 키</label><select id="source">
+<option value="controller_primary">관제탑 키 1</option>
+<option value="controller_backup">관제탑 키 2</option>
+<option value="personal">수집기 개인 키</option></select>
+<div id="keyStatus" role="status" style="margin-top:12px;font-size:19px"></div>
+<label for="daily">하루 최대 계획 요청</label><select id="daily">
+<option value="3">3회</option><option value="5">5회</option>
+<option value="10">10회</option><option value="20">20회</option>
+</select><label><input id="enabled" type="checkbox"> 독립형 AI 계획 사용</label>
+<button id="save" style="width:100%;margin-top:20px">적용하기</button></section>
+<section><h2>관제탑 키 등록</h2>
+<label for="keyAlias">키 종류</label><select id="keyAlias">
+<option value="controller_primary">관제탑 키 1</option><option value="controller_backup">관제탑 키 2</option>
+</select><label for="apiKey">Gemini API 키</label>
+<input id="apiKey" type="password" autocomplete="new-password" placeholder="API 키 입력">
+<button id="saveKey" style="width:100%;margin-top:18px">키 저장</button></section>
+<div id="message" role="status"></div></main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);let admin='';
+const names={controller_primary:'관제탑 키 1',controller_backup:'관제탑 키 2',personal:'개인 키'};
+async function request(path,body){
+ const r=await fetch(path,{method:body?'POST':'GET',cache:'no-store',
+ headers:{'X-Admin-Token':admin,'Content-Type':'application/json'},
+ ...(body?{body:JSON.stringify(body)}:{})});
+ let j;try{j=await r.json()}catch(e){throw Error('연결 확인이 필요합니다')}
+ if(!r.ok||!j.ok)throw Error(j.error||'저장에 실패했습니다');return j;
+}
+function update(j){
+ const previous=$('model').value;$('model').replaceChildren();
+ for(const m of j.available_models)$('model').add(new Option(m,m));
+ $('model').value=j.settings.model||previous;
+ $('source').value=j.settings.key_source;
+ $('daily').value=String(j.settings.daily_calls);
+ $('enabled').checked=Boolean(j.settings.enabled);
+ const active=j.settings.key_source;
+ $('keyStatus').textContent=active==='personal'?'개인 키 사용':j.key_status[active]?'키 연결됨':'키 연결 필요';
+}
+async function connect(){admin=$('adminToken').value.trim();$('adminToken').value='';
+ try{update(await request('/api/admin/independent-ai'));$('message').textContent='연결되었습니다'}
+ catch(e){admin='';$('message').textContent=e.message}}
+$('connect').onclick=connect;
+$('source').onchange=()=>{$('keyStatus').textContent=names[$('source').value]+' 선택'};
+$('save').onclick=async()=>{if(!admin)return $('message').textContent='관리자 연결 후 이용하세요';
+ try{const j=await request('/api/admin/independent-ai',{
+ model:$('model').value,key_source:$('source').value,
+ models:[...$('model').options].map(o=>o.value),
+ daily_calls:Number($('daily').value),enabled:$('enabled').checked
+ });update(j);$('message').textContent='저장되었습니다'}catch(e){$('message').textContent=e.message}};
+$('saveKey').onclick=async()=>{if(!admin)return $('message').textContent='관리자 연결 후 이용하세요';
+ const api_key=$('apiKey').value;$('apiKey').value='';
+ try{update(await request('/api/admin/independent-ai/key',{
+ key_source:$('keyAlias').value,api_key
+ }));$('message').textContent='키가 저장되었습니다'}
+ catch(e){$('message').textContent=e.message}};
+})();
+</script></body></html>

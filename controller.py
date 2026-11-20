@@ -46,6 +46,9 @@ import learning
 import performance
 import site_map_ingest
 import collector_dispatch
+import rental_control
+import independent_ai_policy
+import exploration_registry
 
 VERSION = "S-0.1.2-CONTROL"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
@@ -124,6 +127,9 @@ def init():
         performance.init(con)
         site_map_ingest.init(con, DATA)
         collector_dispatch.init(con)
+        rental_control.init(con, COLLECTOR_DEFAULTS.get("routes", []))
+        independent_ai_policy.init(con, COLLECTOR_DEFAULTS.get("sites", []))
+        exploration_registry.init(con, COLLECTOR_DEFAULTS.get("sites", []))
 
 
 def kv_get(con, k, default=None):
@@ -287,9 +293,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "version": VERSION, "time": now()})
         if method == "GET" and p in ("/admin", "/"):
             return self._page()
+        if method == "GET" and p == "/rental":
+            return self._rental_page("rental.html")
+        if method == "GET" and p == "/admin/rentals":
+            return self._rental_page("admin-rentals.html")
+        if method == "GET" and p == "/admin/independent-ai":
+            return self._rental_page("admin-independent-ai.html")
+        if method == "GET" and p == "/admin/exploration":
+            return self._rental_page("admin-exploration.html")
         if performance.route(self, method, p, q):    # 성과 통계 / 사건 이력 (admin 공통라우트 이전)
             return
         if collector_dispatch.route(self, method, p, q):  # 2대 수집기 중앙 업무/ACK/중복방지
+            return
+        if rental_control.route(self, method, p, q):
+            return
+        if independent_ai_policy.route(self, method, p, q):
+            return
+        if exploration_registry.route(self, method, p, q):
             return
         if p.startswith("/api/admin/"):
             if not self._admin():
@@ -642,6 +662,17 @@ class Handler(BaseHTTPRequestHandler):
                         (ver[:60], fname, digest, approved, now()))
             audit(con, "manager", "program upload %s %s approved=%s" % (ver, fname, bool(approved)))
         return self._json(200, {"ok": True, "sha256": digest, "bytes": n})
+
+    def _rental_page(self, file_name):
+        """Serve fixed application HTML only; never echo user-supplied filenames."""
+        data = _load(file_name, "Service is temporarily unavailable").encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _page(self):
         data = ADMIN_PAGE.encode()
