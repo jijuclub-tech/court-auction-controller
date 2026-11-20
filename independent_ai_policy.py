@@ -212,7 +212,8 @@ def route(h,method,path,query):
             h._json(200,{"ok":True,"settings":data,"available_models":list(MODELS),
                          "key_status":_key_status()})
             return True
-        name=str((h._body().get("name") if method=="POST" else query.get("name")) or "")
+        body=h._body() if method=="POST" else {}
+        name=str((body.get("name") if method=="POST" else query.get("name")) or "")
         with h.db_module() as con:
             device=_collector(h,con,name)
             if not device or device["type"]!="supply":
@@ -232,7 +233,6 @@ def route(h,method,path,query):
                 return True
             if method!="POST" or not path.endswith("/plan"):
                 h._json(405,{"ok":False});return True
-            body=h._body()
             instruction=body.get("instruction")
             if not isinstance(instruction,str) or not 1<=len(instruction.strip())<=1500:
                 raise ValueError("작업 내용을 확인해 주세요")
@@ -244,7 +244,9 @@ def route(h,method,path,query):
                 raise ValueError("승인된 모델을 선택해 주세요")
             site_id=str(body.get("site_id") or "")
             site=_site(con,site_id)
-            book=learning.for_visit(con,name,site_id,None).get("book")
+            learning_context=learning.for_visit(con,name,site_id,None)
+            book=learning_context.get("book")
+            book_version=learning_context.get("version",0)
             key=os.environ.get(KEY_SOURCES[config["key_source"]],"")
             if not key:
                 h._json(503,{"ok":False,"error":"관제탑 AI 키가 아직 연결되지 않았습니다"})
@@ -262,7 +264,7 @@ def route(h,method,path,query):
         with h.db_module() as con:
             con.execute("UPDATE independent_ai_calls SET result='DONE' WHERE request_key=?",(req_id,))
         h._json(200,{"ok":True,"plan":plan,"usage":usage,
-                     "learning_version":learning.for_visit if False else None})
+                     "learning_version":book_version})
         return True
     except (ValueError,TypeError,sqlite3.IntegrityError) as exc:
         h._json(400,{"ok":False,"error":str(exc)[:130]})
