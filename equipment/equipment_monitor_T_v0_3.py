@@ -141,8 +141,14 @@ def heartbeat(node, token, metrics):
             state, detail = "DEGRADED", "업무 서비스 정지 보고"
         elif str(data.get("nas_state", "")).upper() in ("DOWN", "FAILED"):
             state, detail = "DEGRADED", "NAS 접근 실패 보고"
-        elif data.get("disk_free_bytes") is not None and int(data["disk_free_bytes"]) < 2 * 1024**3:
+        elif isinstance(data.get("disk_free_bytes"), (int, float)) and data["disk_free_bytes"] < 2 * 1024**3:
             state, detail = "DEGRADED", "장비 디스크 여유 2GB 미만"
+        elif isinstance(data.get("battery_percent"), (int, float)) and data["battery_percent"] < 15:
+            state, detail = "DEGRADED", "노트북 배터리 잔량 15% 미만"
+        elif isinstance(data.get("ram_percent"), (int, float)) and data["ram_percent"] >= 95:
+            state, detail = "DEGRADED", "메모리 사용률 95% 이상"
+        elif isinstance(data.get("cpu_percent"), (int, float)) and data["cpu_percent"] >= 95:
+            state, detail = "DEGRADED", "CPU 사용률 95% 이상"
         con.execute("UPDATE equipment_nodes_T SET last_seen=?,metrics=?,failures=0"
                     " WHERE node_id=?", (time.time(), json.dumps(data, ensure_ascii=False), node))
         _change(con, node, state, detail)
@@ -183,7 +189,7 @@ def _remote_mount_ok(path):
             if len(left_parts) < 6 or not right_parts:
                 continue
             mountpoint = Path(left_parts[4].replace("\\040", " "))
-            if full == mountpoint or full.is_relative_to(mountpoint):
+            if full == mountpoint or mountpoint in full.parents:
                 candidates.append((len(str(mountpoint)), right_parts[0], left_parts[5]))
         if not candidates:
             return False
