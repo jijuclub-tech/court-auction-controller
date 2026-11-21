@@ -273,7 +273,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t
 function tab(t){if(t==='equipment' && T)loadEquipment().catch(()=>{});if(t==='performance' && T){if(!$('perfDate').value)$('perfDate').value=perfKstDay();loadPerformance().catch(()=>{});loadPerformanceIncidents().catch(()=>{});}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='t_'+t));location.hash=t;}
-tab((location.hash||'#calls').slice(1).split('#')[0]||'calls');
+tab((location.hash||'#equipment').slice(1).split('#')[0]||'calls');
 
 function clone(x){return JSON.parse(JSON.stringify(x));}
 function markDirty(){dirty=true;['dirty1','dirty2','dirty3'].forEach(i=>$(i).textContent='· 저장 안 한 변경 있음');}
@@ -294,7 +294,7 @@ async function load(first){
 function equipStamp(ts){return ts?new Date(Number(ts)*1000).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'보고 없음';}
 function equipPill(v){
  const titles={ONLINE:'정상',OFFLINE:'연결 끊김',DEGRADED:'이상',UNKNOWN:'미확인',
- NOT_CONFIGURED:'설정 필요'};
+ NOT_CONFIGURED:'설정 필요',REACHABLE_ONLY:'통신만 확인'};
  const style=v==='ONLINE'?'ok':v==='OFFLINE'?'bad':'wait';
  return '<span class="pill '+style+'">'+esc(titles[v]||v)+'</span>';
 }
@@ -309,7 +309,7 @@ async function loadEquipment(force=false){
  $('equipment-badge').innerHTML=active.length?'<span class="badge">'+active.length+'</span>':'';
  $('equipment-summary').innerHTML='<b>등록 '+nodes.length+'대 · 정상 '+nodes.filter(n=>n.status==='ONLINE').length+
  ' · 장애 '+nodes.filter(n=>n.status==='OFFLINE').length+' · 이상 '+nodes.filter(n=>n.status==='DEGRADED').length+
- ' · 미확인 '+nodes.filter(n=>['UNKNOWN','NOT_CONFIGURED'].includes(n.status)).length+'</b><p class="mut">'+
+ ' · 미확인 '+nodes.filter(n=>['UNKNOWN','NOT_CONFIGURED','REACHABLE_ONLY'].includes(n.status)).length+'</b><p class="mut">'+
  (z.push_configured?'원격 알림 채널이 설정되어 있습니다. 전송 결과를 아래에서 확인하십시오.':
  '원격 알림 채널(NOTIFY_URL)이 미설정입니다. 현재는 관제 화면의 경고만 확인할 수 있습니다.')+'</p>';
  const freshe=events.filter(e=>e.severity==='critical' || e.severity==='warning').filter(e=>!eqSeen.has(e.id));
