@@ -16,7 +16,7 @@
 ## 태블릿 접속과 인증
 1. Ubuntu 관제 서비스는 부팅 자동 실행, 중단 시 자동 재시작되는 기존 systemd 구성 이용. 코드 PR 검수 승인 후 설치.
 2. 삼성 탭은 HTTPS 및 Tailscale/인증 프록시 등 안전한 경로로 관제기 /admin에 접속. 공용 인터넷에 무인증 관리 포트를 직접 공개하지 않는다.
-3. 장비 관제 → 장비 연결 등록: 자산 ID와 이름 입력, 랜덤 토큰 1회 표시. 해당 PC에만 보안 설정으로 전달하고 토큰을 GitHub·채팅·일반 로그에 남기지 않는다. 최초 등록만으로 ONLINE이 되는 것은 아니다.
+3. 장비 관제 → 장비 연결 등록: 자산 ID와 이름 입력, 랜덤 토큰 1회 표시. 해당 PC에만 보안 설정으로 전달하고 토큰을 GitHub·채팅·일반 로그에 남기지 않는다. 최초 등록만으로 ONLINE이 되는 것은 아니다. 서비스 검증 없는 인증 heartbeat는 REACHABLE_ONLY(통신만 확인)이며, 승인된 로컬 서비스 헬스가 RUNNING이어야 PC를 ONLINE으로 표시한다.
 4. 각 Windows/Ubuntu PC에 equipment/equipment_agent_T_v0_3.py를 설치하고 작업 스케줄러 또는 서비스로 자동 실행한다. 장치별 환경값 EQUIPMENT_NODE_ID, EQUIPMENT_TOKEN, EQUIPMENT_CONTROLLER_URL=https://관제서버를 설정한다. 선택적으로 EQUIPMENT_LOCAL_HEALTH_URL=http://127.0.0.1:포트/health 로 로컬 서비스 실제 응답도 확인한다.
 5. 관제 서버 환경변수 CONTROLLER_MONITOR_TARGETS_FILE에 NAS 장비 프로브용 비공개 JSON 파일 경로 지정. 예시(아래 값은 반드시 실경로로 교체):
 
