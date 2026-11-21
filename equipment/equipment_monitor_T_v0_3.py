@@ -85,8 +85,7 @@ def _change(con, node, status, detail):
     con.execute("UPDATE equipment_nodes_T SET status=?,detail=?,updated_at=?"
                 " WHERE node_id=?", (status, detail[:180], time.time(), node))
     # UNKNOWN and configuration-pending states do not produce false alarms.
-    if old in ("UNKNOWN", "NOT_CONFIGURED") and status in ("OFFLINE", "DEGRADED"):
-        return
+    # A configured target failing twice must alarm even on its very first check.
     if status in ("OFFLINE", "DEGRADED"):
         severity = "critical" if status == "OFFLINE" else "warning"
     elif old in ("OFFLINE", "DEGRADED") and status == "ONLINE":
@@ -256,7 +255,10 @@ def check_once():
                               (node,)).fetchone()
             if row is None:
                 continue
-            result, reason = _probe(c)
+            try:
+                result, reason = _probe(c)
+            except (OSError, ValueError, KeyError, TypeError):
+                result, reason = False, "감시 대상 설정/점검 오류"
             if result is None:
                 _change(con, node, "NOT_CONFIGURED", reason)
                 continue
@@ -280,26 +282,28 @@ def check_once():
 def deliver_pending():
     url = os.environ.get("NOTIFY_URL", "")
     with LOCK, connect() as con:
-        evts = con.execute(
+        evts = [dict(r) for r in con.execute(
             "SELECT id,node_id,state,detail,severity,attempts FROM equipment_events_T "
             "WHERE acknowledged_at IS NULL AND delivery!='DELIVERED' "
             "AND (last_attempt IS NULL OR last_attempt<?) "
-            "ORDER BY id LIMIT 8", (time.time()-300,)).fetchall()
-        for e in evts:
-            outcome = "NOT_CONFIGURED"
-            if url:
-                msg = {"type": "equipment_alert", "node_id": e["node_id"],
-                       "state": e["state"], "severity": e["severity"],
-                       "detail": e["detail"], "event_id": e["id"]}
-                try:
-                    req = Request(url, data=json.dumps(msg, ensure_ascii=False).encode(),
-                                  headers={"Content-Type": "application/json"}, method="POST")
-                    with urlopen(req, timeout=6) as response:
-                        outcome = "DELIVERED" if 200 <= response.status < 300 else "FAILED"
-                except Exception:
-                    outcome = "FAILED"
+            "ORDER BY id LIMIT 8", (time.time()-300,))]
+    for e in evts:
+        outcome = "NOT_CONFIGURED"
+        if url:
+            msg = {"type": "equipment_alert", "node_id": e["node_id"],
+                   "state": e["state"], "severity": e["severity"],
+                   "detail": e["detail"], "event_id": e["id"]}
+            try:
+                req = Request(url, data=json.dumps(msg, ensure_ascii=False).encode(),
+                              headers={"Content-Type": "application/json"}, method="POST")
+                with urlopen(req, timeout=6) as response:
+                    outcome = "DELIVERED" if 200 <= response.status < 300 else "FAILED"
+            except Exception:
+                outcome = "FAILED"
+        with LOCK, connect() as con:
             con.execute("UPDATE equipment_events_T SET delivery=?,last_attempt=?,attempts=attempts+1"
-                        " WHERE id=?", (outcome, time.time(), e["id"]))
+                        " WHERE id=? AND delivery!='DELIVERED'",
+                        (outcome, time.time(), e["id"]))
 
 
 def snapshot():
