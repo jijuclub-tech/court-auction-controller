@@ -26,7 +26,7 @@ class MonitorTests(unittest.TestCase):
             "job_state":"RUNNING", "battery_percent":75,
             "password":"do_not_store", "ssh_key":"do_not_store"}))
         node = next(n for n in mon.snapshot()["nodes"] if n["node_id"]=="BG-PC-003")
-        self.assertEqual(node["status"], "ONLINE")
+        self.assertEqual(node["status"], "REACHABLE_ONLY")
         self.assertEqual(node["metrics"]["job_state"], "RUNNING")
         self.assertNotIn("password", node["metrics"])
         self.assertNotIn("token_sha", node)
@@ -38,7 +38,7 @@ class MonitorTests(unittest.TestCase):
         mon.heartbeat("BG-PC-004", secret, {"disk_free_bytes":100})
         self.assertEqual(next(x for x in mon.snapshot()["nodes"]
                               if x["node_id"]=="BG-PC-004")["status"], "DEGRADED")
-        mon.heartbeat("BG-PC-004", secret, {"disk_free_bytes":20*1024**3})
+        mon.heartbeat("BG-PC-004", secret, {"disk_free_bytes":20*1024**3, "service_state":"RUNNING"})
         events = [x for x in mon.snapshot()["events"] if x["node_id"]=="BG-PC-004"]
         self.assertEqual([x["severity"] for x in events], ["recovered", "warning"])
         mon.acknowledge(events[1]["id"])
