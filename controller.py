@@ -48,8 +48,9 @@ import performance
 import site_map_ingest
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
+from equipment import equipment_monitor_T_v0_3 as equipment_monitor
 
-VERSION = "S-0.1.2-CONTROL+T-v0.2-KEYS"
+VERSION = "S-0.1.2-CONTROL+T-v0.3-MONITOR"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
@@ -127,6 +128,7 @@ def init():
         site_map_ingest.init(con, DATA)
         collector_dispatch.init(con)
         device_keys.init_schema(con)
+    equipment_monitor.init(DB_PATH)
 
 
 def kv_get(con, k, default=None):
@@ -285,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self, method):
         u = urlparse(self.path)
         p, q = u.path.rstrip("/") or "/", {k: v[0] for k, v in parse_qs(u.query).items()}
+        if equipment_monitor.route(self, method, p, q):
+            return
         if site_map_ingest.route(self, method, p, q):
             return
         if method == "GET" and p == "/api/health":
@@ -716,6 +720,7 @@ def main():
     a = ap.parse_args()
     init()
     threading.Thread(target=_performance_close_loop, daemon=True, name="performance-close").start()
+    equipment_monitor.start_background()
     if not ADMIN_TOKEN:
         print("경고: CONTROLLER_ADMIN_TOKEN 이 없어 관리인 화면(/admin)을 쓸 수 없습니다.")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

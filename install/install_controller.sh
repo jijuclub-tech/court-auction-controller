@@ -14,7 +14,7 @@
 # Needs: Ubuntu with python3 (3.8 or later; Ubuntu 22.04/24.04 have it). No packages are installed.
 set -euo pipefail
 
-VERSION="S-0.1.2-CONTROL+T-v0.2-KEYS"
+VERSION="S-0.1.2-CONTROL+T-v0.3-MONITOR"
 BRANCH="${BRANCH:-main}"
 RAW="https://raw.githubusercontent.com/jijuclub-tech/court-auction-controller/${BRANCH}"
 APP="/opt/bidguard/court-auction-controller"
@@ -50,6 +50,19 @@ else
     else die "wget 이나 curl 이 필요합니다."; fi
   done
 fi
+# Monitoring sidecar is staged separately; existing FILES/paths remain unchanged.
+mkdir -p "${STAGE}/equipment"
+if [ -f "${HERE}/../controller.py" ]; then
+  cp "${HERE}/../equipment/equipment_monitor_T_v0_3.py" "${STAGE}/equipment/equipment_monitor_T_v0_3.py"
+else
+  if command -v wget >/dev/null; then
+    wget -q -O "${STAGE}/equipment/equipment_monitor_T_v0_3.py" "${RAW}/equipment/equipment_monitor_T_v0_3.py"
+  else
+    curl -fsSL -o "${STAGE}/equipment/equipment_monitor_T_v0_3.py" "${RAW}/equipment/equipment_monitor_T_v0_3.py"
+  fi
+fi
+python3 -m py_compile "${STAGE}/equipment/equipment_monitor_T_v0_3.py" ||
+  die "장비 관제 모듈 파이썬 문법 오류"
 python3 -m py_compile "${STAGE}/controller.py" "${STAGE}/collector_dispatch.py" "${STAGE}/learning.py" "${STAGE}/performance.py" "${STAGE}/site_map_ingest.py" "${STAGE}/site_map_sender.py" "${STAGE}/site_map_backup.py" "${STAGE}/key_wallet.py" "${STAGE}/collector_key_wallet_T_v0_2.py" || die "파이썬 프로그램 파일을 읽을 수 없습니다."
 python3 -c "import json,sys; json.load(open(sys.argv[1],encoding='utf-8'))" "${STAGE}/collector_defaults.json" \
   || die "collector_defaults.json 이 깨졌습니다."
@@ -78,6 +91,8 @@ fi
 mkdir -p "$APP" "$DATA" "$ETC"
 find "$APP" -mindepth 1 -maxdepth 1 -type f -delete
 for f in $FILES; do install -m 0644 "${STAGE}/$(basename "$f")" "${APP}/"; done
+mkdir -p "${APP}/equipment"
+install -m 0644 "${STAGE}/equipment/equipment_monitor_T_v0_3.py" "${APP}/equipment/equipment_monitor_T_v0_3.py"
 chmod 0755 "${APP}/uninstall_controller.sh"
 printf '%s\n' "$VERSION" > "${APP}/VERSION"
 chown -R "$SVC_USER":"$SVC_USER" "$DATA"
