@@ -42,6 +42,21 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
 #login .card{width:min(420px,92vw)}
 #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:8px;display:none;z-index:30}
 .dirty{color:var(--warn);font-weight:600}
+.equipment-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(275px,1fr));gap:12px}
+.equipment-tile{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}
+.equipment-tile h3{margin:0 0 8px;font-size:19px}.equipment-tile p{margin:6px 0}
+#equipment-alerts .card{border-left:5px solid var(--warn);padding:14px}
+#equipment-table{overflow-x:auto}
+#equipment-table table{min-width:700px}
+@media(min-width:600px){body{font-size:18px}header{min-height:60px;padding:12px 16px}header b{font-size:26px}
+nav{top:60px;gap:6px}nav button{font-size:18px;min-height:48px}
+main{max-width:1400px;padding:14px}.card{padding:18px}
+h2{font-size:26px}h3{font-size:20px}.mut{font-size:16px}
+button,select,input,textarea{font-size:18px;min-height:44px}
+table{font-size:16px}th,td{padding:12px 10px}
+.pill{font-size:16px;padding:4px 9px}}
+@media(max-width:600px){.equipment-grid{grid-template-columns:1fr}#t_equipment button{min-height:44px}
+#t_equipment table{font-size:15px}}
 </style>
 </head>
 <body>
@@ -57,6 +72,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  <button class="sm" onclick="enableSound()" id="soundbtn">🔔 알림 소리 켜기</button>
  <button class="sm" onclick="logout()">나가기</button></header>
 <nav id="nav">
+ <button data-t="equipment">장비 관제<span id="equipment-badge"></span></button>
  <button data-t="calls">호출<span id="callcount"></span></button>
  <button data-t="collectors">수집기</button>
  <button data-t="menu">메뉴(사이트)</button>
@@ -69,6 +85,40 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  <button data-t="logs">기록</button>
 </nav>
 <main>
+
+<section id="t_equipment">
+ <div class="card">
+  <h2>장비 통합 관제 · 삼성 탭 화면</h2>
+  <p class="mut">전원이 켜진 것과 정상 운영은 다릅니다. 인증된 상태 보고, 서비스 응답, NAS 실제 읽기·쓰기, 백업 검증을 구분합니다. 실제 관제기와 연결되지 않은 장비는 온라인으로 표시하지 않습니다.</p>
+  <div class="row"><button class="go" onclick="loadEquipment(true)">지금 전체 점검</button>
+  <span id="equipment-update" class="mut">관제 자료 조회 전</span></div>
+  <div id="equipment-summary" class="card" aria-live="polite">수집한 보고 없음</div>
+  <div id="equipment-alerts" aria-live="assertive"></div>
+  <h3>등록 장비별 상태</h3>
+  <div id="equipment-nodes" class="equipment-grid"></div>
+ </div>
+ <div class="card">
+  <h2>장애·복구 기록</h2>
+  <p class="mut">감지 즉시 서버에서 알림 채널로 전송을 시도하며 실패하면 재시도합니다. 수신이 확인되지 않은 알림은 별도 표시합니다.</p>
+  <div id="equipment-table"><table id="equipment-events"></table></div>
+ </div>
+ <div class="card">
+  <h2>장비 연결 등록 · 관리인 전용</h2>
+  <p class="mut">장비 ID와 종류를 입력하면 장비별 인증 토큰이 한 번만 발급됩니다. 토큰은 GitHub·채팅·일반 로그에 넣지 마십시오. 토큰 교체 시 기존 연결은 끊어집니다.</p>
+  <div class="row">
+   <input id="eq-id" placeholder="BG-PC-003" autocomplete="off" aria-label="장비 ID">
+   <input id="eq-label" placeholder="장비 이름" autocomplete="off" aria-label="장비 이름">
+   <select id="eq-kind" aria-label="종류"><option value="collector">수집기</option><option value="pc">PC·게임 서버</option><option value="nas">NAS</option><option value="network">네트워크 장비</option></select>
+   <label><input type="checkbox" id="eq-rotate">기존 토큰 교체</label>
+   <button onclick="pairEquipment()">인증 토큰 발급</button>
+  </div>
+  <div id="eq-secret-wrap" style="display:none"><p class="mut">이번 화면에서만 확인할 수 있습니다. 설정 후 지우십시오.</p>
+   <textarea id="eq-secret" readonly rows="2" aria-label="1회용 장비 토큰"></textarea>
+   <button onclick="navigator.clipboard.writeText($('eq-secret').value).then(()=>toast('복사됨')).catch(()=>toast('브라우저 복사 권한 확인'))">복사</button>
+   <button onclick="$('eq-secret').value='';$('eq-secret-wrap').style.display='none'">화면에서 지우기</button>
+  </div>
+ </div>
+</section>
 
 <section id="t_calls">
  <div class="card"><h2>관리인 호출 · 관제기 질문</h2>
@@ -193,6 +243,7 @@ let T = sessionStorage.getItem('ctok') || localStorage.getItem('ctok') || '';
 let S = null;                 // last state
 let W = null;                 // working copy {sites, routes, ladder}
 let dirty = false, seen = new Set(), sound = false, audioCtx = null;
+let eqCache=null, eqLastFetch=0, eqSeen=new Set();
 const picks = {};
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -219,7 +270,7 @@ function beep(){if(!sound||!audioCtx)return;const o=audioCtx.createOscillator(),
   g.gain.setValueAtTime(.2,audioCtx.currentTime);o.start();o.stop(audioCtx.currentTime+.35);}
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.t));
-function tab(t){if(t==='performance' && T){if(!$('perfDate').value)$('perfDate').value=perfKstDay();loadPerformance().catch(()=>{});loadPerformanceIncidents().catch(()=>{});}
+function tab(t){if(t==='equipment' && T)loadEquipment().catch(()=>{});if(t==='performance' && T){if(!$('perfDate').value)$('perfDate').value=perfKstDay();loadPerformance().catch(()=>{});loadPerformanceIncidents().catch(()=>{});}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='t_'+t));location.hash=t;}
 tab((location.hash||'#calls').slice(1).split('#')[0]||'calls');
@@ -236,6 +287,65 @@ async function load(first){
     drawSites(); drawRouteSites(); drawRoutes(); drawLadder();
   }
   drawCalls(); drawCollectors(); drawOrders(); drawPrograms(); drawLogs(); drawLearning();
+  loadEquipment().catch(()=>{});
+}
+
+/* ---------- equipment / tablet control center ---------- */
+function equipStamp(ts){return ts?new Date(Number(ts)*1000).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false}):'보고 없음';}
+function equipPill(v){
+ const titles={ONLINE:'정상',OFFLINE:'연결 끊김',DEGRADED:'이상',UNKNOWN:'미확인',
+ NOT_CONFIGURED:'설정 필요'};
+ const style=v==='ONLINE'?'ok':v==='OFFLINE'?'bad':'wait';
+ return '<span class="pill '+style+'">'+esc(titles[v]||v)+'</span>';
+}
+async function loadEquipment(force=false){
+ if(!T)return;
+ if(!force && eqCache && Date.now()-eqLastFetch<10000)return;
+ const z = force?await api('/api/admin/equipment/check',{}):await api('/api/admin/equipment/status');
+ eqLastFetch=Date.now();eqCache=z;
+ $('equipment-update').textContent='마지막 조회 '+equipStamp(z.checked_at)+' (서버 보고)';
+ const nodes=z.nodes||[], events=z.events||[];
+ const active=events.filter(e=>!e.acknowledged_at && ['critical','warning'].includes(e.severity));
+ $('equipment-badge').innerHTML=active.length?'<span class="badge">'+active.length+'</span>':'';
+ $('equipment-summary').innerHTML='<b>등록 '+nodes.length+'대 · 정상 '+nodes.filter(n=>n.status==='ONLINE').length+
+ ' · 장애 '+nodes.filter(n=>n.status==='OFFLINE').length+' · 이상 '+nodes.filter(n=>n.status==='DEGRADED').length+
+ ' · 미확인 '+nodes.filter(n=>['UNKNOWN','NOT_CONFIGURED'].includes(n.status)).length+'</b><p class="mut">'+
+ (z.push_configured?'원격 알림 채널이 설정되어 있습니다. 전송 결과를 아래에서 확인하십시오.':
+ '원격 알림 채널(NOTIFY_URL)이 미설정입니다. 현재는 관제 화면의 경고만 확인할 수 있습니다.')+'</p>';
+ const freshe=events.filter(e=>e.severity==='critical' || e.severity==='warning').filter(e=>!eqSeen.has(e.id));
+ if(eqSeen.size && freshe.length){beep();
+  if('Notification' in window && Notification.permission==='granted')
+    new Notification('BIDGUARD 장비 장애',{body:freshe[0].node_id+' · '+freshe[0].detail});
+ }
+ events.forEach(e=>eqSeen.add(e.id));if(!eqSeen.size)eqSeen.add('_');
+ $('equipment-alerts').innerHTML=active.map(e=>'<div class="card alert"><b>장비 이상 · '+esc(e.node_id)+'</b> · '+
+  esc(e.detail)+' · '+equipStamp(e.at)+' <button onclick="ackEquipment('+Number(e.id)+')">확인</button></div>').join('');
+ $('equipment-nodes').innerHTML=nodes.map(n=>{
+  const m=n.metrics||{};
+  return '<article class="equipment-tile"><h3>'+esc(n.label)+' <span class="mut">'+esc(n.node_id)+'</span></h3>'+
+  '<p>'+equipPill(n.status)+' · '+esc(n.kind)+'</p>'+
+  '<p>'+esc(n.detail||'현장 측정 미확인')+'</p>'+
+  '<p class="mut">최종 상태 보고: '+equipStamp(n.last_seen)+'</p>'+
+  '<p class="mut">서비스: '+esc(m.service_state||'미보고')+
+   ' · NAS: '+esc(m.nas_state||'미보고')+' · Drive: '+esc(m.drive_state||'미보고')+'</p>'+
+  '<p class="mut">작업: '+esc(m.job_state||'미보고')+' · 임시 보관: '+
+   esc(m.local_pending_count??'미보고')+'건</p>'+
+  '<p class="mut">디스크 여유: '+(m.disk_free_bytes==null?'미보고':Math.round(Number(m.disk_free_bytes)/1073741824)+' GB')+
+   ' · 인증: '+(n.paired?'등록':'미등록')+'</p></article>';
+ }).join('');
+ $('equipment-events').innerHTML='<tr><th>시각(KST)</th><th>장비</th><th>변화</th><th>내용</th><th>통지</th><th>확인</th></tr>'+
+  events.slice(0,40).map(e=>'<tr><td>'+equipStamp(e.at)+'</td><td>'+esc(e.node_id)+'</td><td>'+esc(e.old_state)+
+   ' → '+esc(e.state)+'</td><td>'+esc(e.detail)+'</td><td>'+esc(e.delivery)+'</td><td>'+
+   (e.acknowledged_at?'확인함':'<button class="sm" onclick="ackEquipment('+Number(e.id)+')">확인</button>')+'</td></tr>').join('');
+}
+async function ackEquipment(id){await api('/api/admin/equipment/ack',{event_id:id});eqLastFetch=0;await loadEquipment();}
+async function pairEquipment(){
+ const node_id=$('eq-id').value.trim().toUpperCase(),label=$('eq-label').value.trim(),kind=$('eq-kind').value;
+ if(!/^[A-Z][A-Z0-9_-]{3,55}$/.test(node_id)||!label)return toast('올바른 장비 ID와 이름을 입력하십시오.');
+ if($('eq-rotate').checked && !confirm('기존 장비 토큰이 무효화됩니다. 계속하시겠습니까?'))return;
+ const result=await api('/api/admin/equipment/register',{node_id,label,kind,rotate:$('eq-rotate').checked});
+ $('eq-secret').value=result.token_once;$('eq-secret-wrap').style.display='block';
+ eqLastFetch=0;await loadEquipment();toast('장비 인증 토큰 발급. 이 화면에서 한 번만 확인하세요.');
 }
 
 /* ---------- calls ---------- */
