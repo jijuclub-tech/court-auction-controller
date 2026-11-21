@@ -90,6 +90,8 @@ def _change(con, node, status, detail):
         severity = "critical" if status == "OFFLINE" else "warning"
     elif old in ("OFFLINE", "DEGRADED") and status == "ONLINE":
         severity = "recovered"
+    elif old == "OFFLINE" and status == "REACHABLE_ONLY":
+        severity = "warning"  # link restored, service status still unknown
     else:
         return
     con.execute("INSERT INTO equipment_events_T(node_id,at,old_state,state,detail,severity)"
@@ -135,8 +137,11 @@ def heartbeat(node, token, metrics):
         if not row["first_seen"]:
             con.execute("UPDATE equipment_nodes_T SET first_seen=? WHERE node_id=?",
                         (time.time(), node))
-        state = "ONLINE"
-        detail = "인증된 장비 상태 보고"
+        # A heartbeat proves network/agent reachability, NOT application readiness.
+        state = "REACHABLE_ONLY"
+        detail = "통신만 확인, 실제 업무 서비스 응답 미검증"
+        if str(data.get("service_state", "")).upper() == "RUNNING":
+            state, detail = "ONLINE", "로컬 업무 서비스 응답 확인"
         if str(data.get("service_state", "")).upper() in ("DOWN", "FAILED", "STOPPED"):
             state, detail = "DEGRADED", "업무 서비스 정지 보고"
         elif str(data.get("nas_state", "")).upper() in ("DOWN", "FAILED"):
@@ -273,7 +278,7 @@ def check_once():
                         " THEN ? ELSE last_seen END WHERE node_id=?",
                         (failures, int(result is True), time.time(), node))
             if result:
-                _change(con, node, "ONLINE", reason)
+                _change(con, node, "ONLINE" if c.get("kind") == "nas" else "REACHABLE_ONLY", reason)
             elif failures >= 2:
                 _change(con, node, "OFFLINE", reason)
         # No direct target config means an unknown NAS, not an offline NAS.
