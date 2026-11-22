@@ -198,9 +198,9 @@ def approve(con, body):
     scrub_check(content)
     if source.startswith("report:"):
         report_event = source.split(":", 1)[1]
-        rec = con.execute("SELECT 1 FROM kb_reports WHERE event_id=?", (report_event,)).fetchone()
-        if not rec:
-            raise ValueError("referenced report not found")
+        rec = con.execute("SELECT scope,site FROM kb_reports WHERE event_id=?", (report_event,)).fetchone()
+        if not rec or (rec[0], rec[1]) != (scope, site):
+            raise ValueError("report missing or from another scope/site")
     hx = digest(content.encode())
     current = con.execute("""SELECT revision,sha256 FROM kb_docs
       WHERE scope=? AND site=? AND doc_id=? ORDER BY revision DESC LIMIT 1""",
@@ -212,9 +212,7 @@ def approve(con, body):
       (scope,site,doc_id,revision,body,sha256,source_event,approved_by,approved_at)
       VALUES (?,?,?,?,?,?,?,?,?)""",
       (scope, site, doc_id, revision, content, hx, source, "authenticated_admin", stamp()))
-    if source.startswith("report:"):
-        con.execute("UPDATE kb_reports SET status='approved' WHERE event_id=?",
-                    (source.split(":", 1)[1],))
+    # Approval evidence is the new immutable kb_docs row; reports remain unchanged.
     return 201, {"ok": True, "path": doc_id, "revision": revision, "sha256": hx}
 
 
@@ -253,12 +251,19 @@ def status(con, site=""):
         raise ValueError("invalid site")
     where = " WHERE site=?" if site else ""
     args = (site,) if site else ()
+    # Calculate approval from immutable versions; no UPDATE to historical reports.
+    review = ("CASE WHEN EXISTS (SELECT 1 FROM kb_docs d "
+              "WHERE d.source_event='report:'||r.event_id AND d.scope=r.scope "
+              "AND d.site=r.site) THEN 'approved' ELSE 'pending' END")
+    report_where = " WHERE r.site=?" if site else ""
     groups = [dict(r) for r in con.execute(
-        "SELECT scope,site,status,COUNT(*) AS n FROM kb_reports" + where +
-        " GROUP BY scope,site,status ORDER BY site,status", args).fetchall()]
+        "SELECT r.scope,r.site," + review + " AS status,COUNT(*) AS n "
+        "FROM kb_reports r" + report_where +
+        " GROUP BY r.scope,r.site,status ORDER BY r.site,status", args).fetchall()]
     recent = [dict(r) for r in con.execute(
-        "SELECT event_id,scope,site,node,kind,symptom,status,observed_at,received_at "
-        "FROM kb_reports" + where + " ORDER BY id DESC LIMIT 50", args).fetchall()]
+        "SELECT r.event_id,r.scope,r.site,r.node,r.kind,r.symptom," + review +
+        " AS status,r.observed_at,r.received_at FROM kb_reports r" + report_where +
+        " ORDER BY r.id DESC LIMIT 50", args).fetchall()]
     acks = [dict(r) for r in con.execute(
         "SELECT node,scope,site,manifest_sha256,outcome,received_at "
         "FROM kb_acks" + where + " ORDER BY received_at DESC LIMIT 50", args).fetchall()]
