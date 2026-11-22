@@ -58,7 +58,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  <button class="sm" onclick="logout()">나가기</button></header>
 <nav id="nav">
  <button data-t="calls">호출<span id="callcount"></span></button>
- <button data-t="collectors">수집기</button>
+ <button data-t="collectors">수집기<span id="pchcount"></span></button>
  <button data-t="menu">메뉴(사이트)</button>
  <button data-t="routes">정해진 경로</button>
  <button data-t="ladder">AI 단계</button>
@@ -82,6 +82,9 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px
  <div class="card"><h2>수집기</h2>
  <p class="mut">처음 접속한 수집기는 '등록 대기'로 나옵니다. 승인해야 지시·갱신·호출을 주고받습니다. 상태는 수집기가 단계 사이마다 보내는 보고입니다.</p>
  <div id="cols"></div></div>
+ <div class="card" id="pchcard"><h2>수집 PC 상태</h2>
+  <p class="mut">노트북이 주기적으로 보낸 전원·봇 호출·사람 호출 상태입니다. 마지막 보고 후 일정 시간이 지나면 오프라인으로 표시합니다. 이 값은 GitHub에 올리지 않습니다.</p>
+  <div id="pch"></div></div>
  <div class="card"><h3>수집기 미리 등록</h3>
  <div class="row"><input id="newname" placeholder="수집기 이름" class="grow">
  <select id="newtype"><option value="control">관제형</option><option value="supply">보급형</option></select>
@@ -235,7 +238,7 @@ async function load(first){
     W = {sites: clone(S.sites || d.sites || []), routes: clone(S.routes || d.routes || []), ladder: clone(S.ladder || d.ladder || {levels:{}})};
     drawSites(); drawRouteSites(); drawRoutes(); drawLadder();
   }
-  drawCalls(); drawCollectors(); drawOrders(); drawPrograms(); drawLogs(); drawLearning();
+  drawCalls(); drawCollectors(); drawPcHealth(); drawOrders(); drawPrograms(); drawLogs(); drawLearning();
 }
 
 /* ---------- calls ---------- */
@@ -289,6 +292,29 @@ async function sendType(id){ const el=$('tx_'+id); const t=el.value; if(!t) retu
   if(!/^[\x20-\x7e]{1,64}$/.test(t)) return toast('영문·숫자·기호 64자까지 보낼 수 있습니다 (피코2 TYPE 범위).');
   el.value=''; await answer(id, {decision:'type', text:t}); }
 async function answer(id, b){ await api('/api/admin/answer/'+id, b); toast('답을 보냈습니다.'); const e=document.querySelector(`.card[data-id="${id}"]`); if(e)e.remove(); load(); }
+
+/* ---------- pc health (notebook power / calls) ---------- */
+function drawPcHealth(){
+  const box = $('pch'), data = S.pc_health || {}, rows = data.machines || [];
+  const warnN = rows.reduce((n,m)=>n+(m.warnings&&m.warnings.length?1:0),0);
+  $('pchcount').innerHTML = warnN ? '<span class="badge">'+warnN+'</span>' : '';
+  if (!rows.length){ box.innerHTML = '<p class="mut">아직 수집 PC 보고가 없습니다. PC에서 report_pc_health_G_v1.0.0.py 를 실행하면 여기에 나타납니다.</p>'; return; }
+  const label = {offline:'오프라인', charger_unplugged:'충전기 빠짐', battery_low:'배터리 20% 미만', human_call:'사람 호출'};
+  box.innerHTML = rows.map(m => {
+    const warns = m.warnings||[];
+    const pills = warns.map(w=>'<span class="pill bad">'+esc(label[w]||w)+'</span>').join(' ');
+    const on = m.online ? '<span class="pill ok">온라인</span>' : '<span class="pill bad">오프라인</span>';
+    const bat = (m.battery_percent==null||m.battery_percent==='') ? '배터리 정보 없음' : ('배터리 '+m.battery_percent+'%');
+    const ch = m.charging===true||m.ac_plugged===true ? '충전 중' : (m.charging===false||m.ac_plugged===false ? '충전기 빠짐' : '충전 여부 미확인');
+    const bot = m.bot_ask_pending ? '<span class="pill wait">봇 호출 대기</span>' : '<span class="pill">봇 호출 없음</span>';
+    const hum = m.human_call_time ? ('사람 호출 최근 '+esc(m.human_call_time)) : '새 사람 호출 없음';
+    const proc = m.collector_running ? '수집 프로세스 실행 중' : '수집 프로세스 없음';
+    return `<div class="${warns.length?'card alert':'card'}" style="margin:8px 0"><div class="row"><b>${esc(m.machine_name||'-')}</b> ${on} ${pills}</div>
+      <div>${esc(bat)} · ${esc(ch)} · ${esc(proc)}</div>
+      <div class="row">${bot}<span class="mut">${esc(hum)}</span></div>
+      <div class="mut">보고 ${esc(m.observed_at||m.received_at||'-')} · 오프라인 기준 ${esc(String(data.offline_after_min||30))}분</div></div>`;
+  }).join('');
+}
 
 /* ---------- collectors ---------- */
 function drawCollectors(){
