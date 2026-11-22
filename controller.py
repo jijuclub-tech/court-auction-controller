@@ -48,8 +48,9 @@ import performance
 import site_map_ingest
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
+import pc_health_G_v1_0_0 as pc_health
 
-VERSION = "S-0.1.2-CONTROL+T-v0.2-KEYS"
+VERSION = "S-0.1.2-CONTROL+T-v0.2-KEYS+G-v1.0.0-PCHEALTH"
 DATA = Path(os.environ.get("CONTROLLER_DATA", "controller_data"))
 DB_PATH = DATA / "controller.db"
 SHOTS = DATA / "shots"
@@ -127,6 +128,7 @@ def init():
         site_map_ingest.init(con, DATA)
         collector_dispatch.init(con)
         device_keys.init_schema(con)
+        pc_health.init(con)
 
 
 def kv_get(con, k, default=None):
@@ -286,6 +288,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         p, q = u.path.rstrip("/") or "/", {k: v[0] for k, v in parse_qs(u.query).items()}
         if site_map_ingest.route(self, method, p, q):
+            return
+        if pc_health.route(self, method, p, q):
             return
         if method == "GET" and p == "/api/health":
             return self._json(200, {"ok": True, "version": VERSION, "time": now()})
@@ -578,7 +582,8 @@ class Handler(BaseHTTPRequestHandler):
                     "defaults": COLLECTOR_DEFAULTS,
                     "audit": [dict(r) for r in con.execute("SELECT at,who,what FROM audit ORDER BY id DESC LIMIT 40")],
                     "programs": [dict(r) for r in con.execute("SELECT * FROM programs ORDER BY created_at DESC, rowid DESC")],
-                    "learning": learning.admin_state(con)})
+                    "learning": learning.admin_state(con),
+                    "pc_health": pc_health.admin_snapshot(con)})
         if method != "POST":
             return self._json(404, {"ok": False})
         if p == "/api/admin/program_upload":
