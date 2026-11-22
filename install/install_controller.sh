@@ -24,7 +24,7 @@ ENVF="${ETC}/controller.env"
 UNIT="/etc/systemd/system/court-auction-controller.service"
 SVC_USER="bidguard-ctl"
 PORT="${PORT:-8770}"
-FILES="controller.py collector_dispatch.py learning.py performance.py site_map_ingest.py site_map_sender.py site_map_backup.py key_wallet.py collector_key_wallet_T_v0_2.py admin.html collector_defaults.json install/uninstall_controller.sh"
+FILES="controller.py collector_dispatch.py learning.py performance.py site_map_ingest.py site_map_sender.py site_map_backup.py key_wallet.py collector_key_wallet_T_v0_2.py conductor_automation_T_v0_1.py admin.html collector_defaults.json install/uninstall_controller.sh"
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf '\n[중단] %s\n' "$*" >&2; exit 1; }
@@ -50,7 +50,7 @@ else
     else die "wget 이나 curl 이 필요합니다."; fi
   done
 fi
-python3 -m py_compile "${STAGE}/controller.py" "${STAGE}/collector_dispatch.py" "${STAGE}/learning.py" "${STAGE}/performance.py" "${STAGE}/site_map_ingest.py" "${STAGE}/site_map_sender.py" "${STAGE}/site_map_backup.py" "${STAGE}/key_wallet.py" "${STAGE}/collector_key_wallet_T_v0_2.py" || die "파이썬 프로그램 파일을 읽을 수 없습니다."
+python3 -m py_compile "${STAGE}/controller.py" "${STAGE}/collector_dispatch.py" "${STAGE}/learning.py" "${STAGE}/performance.py" "${STAGE}/site_map_ingest.py" "${STAGE}/site_map_sender.py" "${STAGE}/site_map_backup.py" "${STAGE}/key_wallet.py" "${STAGE}/collector_key_wallet_T_v0_2.py" "${STAGE}/conductor_automation_T_v0_1.py" || die "파이썬 프로그램 파일을 읽을 수 없습니다."
 python3 -c "import json,sys; json.load(open(sys.argv[1],encoding='utf-8'))" "${STAGE}/collector_defaults.json" \
   || die "collector_defaults.json 이 깨졌습니다."
 
