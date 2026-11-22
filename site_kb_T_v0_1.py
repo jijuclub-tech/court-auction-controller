@@ -284,6 +284,11 @@ def route(handler, method, path, query):
             handler._json(403, {"ok": False, "error": "admin required"})
             return True
     else:
+        # A temporary legacy test secret must not survive the December 1 cutover.
+        if (handler.headers.get("X-Collector-Token", "") == "test"
+                and datetime.now(timezone.utc) >= datetime(2026, 11, 30, 15, 0, tzinfo=timezone.utc)):
+            handler._json(403, {"ok": False, "error": "test key expired"})
+            return True
         node = handler.headers.get("X-Collector-Name", "")
         with handler._site_map_db() as con:
             allowed = bool(node and handler._collector_ok(con, node))
