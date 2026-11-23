@@ -74,22 +74,9 @@ def store_stream(con, source, *, collector, size, expected_hash, document_type, 
     root = Path(root)
     folder = root / collector / expected_hash[:2]
     folder.mkdir(parents=True, exist_ok=True)
-    if folder.is_symlink():
+    if (root / collector).is_symlink() or folder.is_symlink():
         raise ValueError("untrusted collector folder")
     target = folder / expected_hash
-    if target.exists():
-        if not target.is_file() or target.stat().st_size != size or not hmac.compare_digest(
-            sha_file(target), expected_hash
-        ):
-            raise ValueError("existing file hash mismatch; human review required")
-        con.execute("""
-            INSERT OR IGNORE INTO collector_uploads_T_v1_8_0
-            (collector,content_sha256,size_bytes,document_type,stored_path)
-            VALUES (?,?,?,?,?)
-        """, (collector, expected_hash, size, document_type, str(target)))
-        return {"ok": True, "duplicate": True, "sha256": expected_hash,
-                "size": size, "status": "controller_stored", "backup_verified": False}
-
     fd, temp_name = tempfile.mkstemp(prefix=".part-", dir=str(folder))
     temp = Path(temp_name)
     try:
@@ -109,8 +96,9 @@ def store_stream(con, source, *, collector, size, expected_hash, document_type, 
             raise ValueError("upload sha256 mismatch")
         if not hmac.compare_digest(sha_file(temp), expected_hash):
             raise ValueError("disk readback sha256 mismatch")
-        if target.exists():
-            if sha_file(target) != expected_hash:
+        duplicate = target.exists()
+        if duplicate:
+            if target.is_symlink() or not target.is_file() or target.stat().st_size != size or sha_file(target) != expected_hash:
                 raise ValueError("concurrent target conflict")
         else:
             os.replace(temp, target)
@@ -119,7 +107,7 @@ def store_stream(con, source, *, collector, size, expected_hash, document_type, 
             (collector,content_sha256,size_bytes,document_type,stored_path)
             VALUES (?,?,?,?,?)
         """, (collector, expected_hash, size, document_type, str(target)))
-        return {"ok": True, "duplicate": False, "sha256": expected_hash,
+        return {"ok": True, "duplicate": duplicate, "sha256": expected_hash,
                 "size": size, "status": "controller_stored", "backup_verified": False}
     finally:
         try:
