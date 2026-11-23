@@ -14,6 +14,7 @@ import re
 import sqlite3
 import urllib.error
 import urllib.request
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -77,7 +78,7 @@ class UploadQueue:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(path)
-        with sqlite3.connect(self.db_path) as con:
+        with closing(sqlite3.connect(self.db_path)) as con, con:
             con.execute("""
                 CREATE TABLE IF NOT EXISTS upload_outbox_T_v1_8_0 (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +102,7 @@ class UploadQueue:
         if not (0 < size <= MAX_UPLOAD):
             raise ValueError("file size out of range")
         hx = file_hash(file)
-        with sqlite3.connect(self.db_path) as con:
+        with closing(sqlite3.connect(self.db_path)) as con, con:
             con.execute("""
                 INSERT OR IGNORE INTO upload_outbox_T_v1_8_0
                   (local_path,content_sha256,size_bytes,document_type)
@@ -110,7 +111,7 @@ class UploadQueue:
         return hx
 
     def pending(self, limit=10):
-        with sqlite3.connect(self.db_path) as con:
+        with closing(sqlite3.connect(self.db_path)) as con, con:
             con.row_factory = sqlite3.Row
             return [dict(row) for row in con.execute(
                 "SELECT * FROM upload_outbox_T_v1_8_0 WHERE state='PENDING' "
@@ -118,7 +119,7 @@ class UploadQueue:
             )]
 
     def _state(self, item_id, state, error=""):
-        with sqlite3.connect(self.db_path) as con:
+        with closing(sqlite3.connect(self.db_path)) as con, con:
             con.execute(
                 "UPDATE upload_outbox_T_v1_8_0 SET state=?, attempts=attempts+1, last_error=? WHERE id=?",
                 (state, str(error)[:120], item_id)
