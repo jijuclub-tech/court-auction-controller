@@ -26,6 +26,8 @@ class CollectorFeatureRuntime:
         self.kiosk = None
         self.stop = threading.Event()
         self.monitor = None
+        self.upload_monitor = None
+        self.upload_failure_count = 0
 
     def on_verified_document(self, file_path, document_type="other"):
         """Call ONLY after the base collector verified and committed the source file."""
@@ -79,6 +81,25 @@ class CollectorFeatureRuntime:
         self.monitor = threading.Thread(target=supervise, name="bidguard-kiosk", daemon=True)
         self.monitor.start()
 
+    def _start_upload_retry(self):
+        if self.queue is None:
+            return
+
+        def retry_loop():
+            while not self.stop.is_set():
+                try:
+                    self.retry_online()
+                except Exception:
+                    # No token/URL/path in logs; keep original file + pending row.
+                    self.upload_failure_count += 1
+                if self.stop.wait(60):
+                    break
+
+        self.upload_monitor = threading.Thread(
+            target=retry_loop, name="bidguard-upload", daemon=True
+        )
+        self.upload_monitor.start()
+
     def run(self, legacy_main):
         """legacy_main(original_arguments, hooks) runs the ORIGINAL collector."""
         if self.options.unlock:
@@ -98,6 +119,7 @@ class CollectorFeatureRuntime:
         try:
             with guard:
                 self._start_kiosk()
+                self._start_upload_retry()
                 # No flags: invoke legacy_main with unchanged arguments and no
                 # side effects from upload, kiosk or HID lock.
                 return legacy_main(self.base_args, self)
@@ -105,5 +127,7 @@ class CollectorFeatureRuntime:
             self.stop.set()
             if self.monitor is not None:
                 self.monitor.join(timeout=3)
+            if self.upload_monitor is not None:
+                self.upload_monitor.join(timeout=3)
             if self.kiosk is not None:
                 self.kiosk.stop()
