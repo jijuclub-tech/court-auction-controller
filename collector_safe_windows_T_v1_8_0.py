@@ -212,3 +212,30 @@ class DedicatedChromeKiosk:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
         self.proc = None
+
+
+def main(argv=None):
+    """Run in a SEPARATE elevated process for remote /unlock or startup watchdog."""
+    import argparse
+    parser = argparse.ArgumentParser(description="BIDGUARD v1.8 input recovery")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--unlock", action="store_true")
+    group.add_argument("--watchdog", action="store_true")
+    parser.add_argument("--journal", required=True)
+    args = parser.parse_args(argv)
+    if not _windows_admin():
+        print("ADMIN_REQUIRED", file=sys.stderr)
+        return 2
+    if args.unlock:
+        result = recover(args.journal)
+        print("UNLOCK_OK" if result["ok"] else "UNLOCK_RETRY_REQUIRED")
+        return 0 if result["ok"] else 3
+    while True:
+        result = watchdog_check(args.journal)
+        if not result["ok"]:
+            print("WATCHDOG_RECOVERY_REQUIRED", file=sys.stderr)
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
