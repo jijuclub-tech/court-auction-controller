@@ -1,0 +1,9 @@
+# 실행 중 생기는 설정·자료·비밀 파일 (GitHub에 올리지 않음)
+config.json
+settings.json
+credentials_local.json
+work_policy.json
+reports/
+data/
+venv/
+__pycache__/

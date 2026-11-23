@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}{{ t.collectors }}{% endblock %}
+{% block content %}
+<h1>수집기 등록</h1>
+<p class="lead">새 수집기를 추가하면 아래 목록에 바로 나타납니다. 같은 이름을 다시 넣으면 유형·메모만 바뀌고 실적 기록은 그대로 남습니다.</p>
+
+<div class="card">
+  <h2>새 수집기 추가</h2>
+  <form method="post">
+    <div class="row">
+      <div class="field"><label for="c-name">이름</label>
+        <input id="c-name" name="name" required placeholder="예: jiju0010"></div>
+      <div class="field" style="flex:0 1 160px"><label for="c-type">유형</label>
+        <select id="c-type" name="type">
+          <option value="supply">보급형</option>
+          <option value="control">관제형</option>
+        </select></div>
+      <div class="field"><label for="c-memo">메모 (선택)</label>
+        <input id="c-memo" name="memo" placeholder="설치 장소·담당자 등 참고 사항"></div>
+      <button class="btn" type="submit">추가</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>등록된 수집기 <span class="count">{{ collectors|length }}대</span></h2>
+  {% if collectors %}
+  <div class="table-wrap"><table>
+    <tr><th>이름</th><th>유형</th><th>상태</th><th>속도</th><th>성공률</th><th>메모</th><th>마지막 접속</th><th>등록일</th></tr>
+    {% for c in collectors %}
+    <tr>
+      <td><b>{{ c.name }}</b></td>
+      <td><span class="tag {{ c.type }}">{{ '관제형' if c.type == 'control' else '보급형' }}</span></td>
+      <td>{% if c.busy %}<span class="tag wait">작업 중</span>{% else %}<span class="tag done">대기</span>{% endif %}</td>
+      <td>{{ c.speed }}</td>
+      <td>{{ c.success }}%</td>
+      <td>{{ c.memo or '—' }}</td>
+      <td class="muted mono">{{ c.last_connected or '접속 기록 없음' }}</td>
+      <td class="muted mono">{{ c.registered or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty"><b>아직 등록된 수집기가 없습니다</b>위 칸에 이름을 넣고 추가를 누르세요.</div>
+  {% endif %}
+</div>
+{% endblock %}

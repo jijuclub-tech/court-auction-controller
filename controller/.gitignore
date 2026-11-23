@@ -1,0 +1,13 @@
+# 실행 중 생기는 자료·비밀 파일 (GitHub에 올리지 않음)
+controller.db
+controller_state.json
+controller_state.json.tmp
+controller_state.json.broken
+credentials.json
+credentials.enc
+apikeys.enc
+.apikey_secret
+logs/
+map_submissions/
+__pycache__/
+venv/

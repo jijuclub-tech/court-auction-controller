@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}{{ t.instructions }}{% endblock %}
+{% block content %}
+<h1>업무 지시</h1>
+<p class="lead">수집기에 보낼 지시서를 발행합니다. 발행한 지시서는 수집기가 가져갈 때까지 아래 대기 목록에 남습니다.</p>
+
+<div class="card">
+  <h2>지시서 발행</h2>
+  <form method="post">
+    <div class="row">
+      <div class="field"><label for="i-col">수집기</label>
+        <input id="i-col" name="collector" list="collector-names" required placeholder="눌러서 등록된 수집기 고르기">
+        <datalist id="collector-names">
+          {% for n in collector_names %}<option value="{{ n }}">{% endfor %}
+        </datalist></div>
+      <div class="field" style="flex:0 1 180px"><label for="i-type">작업 유형</label>
+        <select id="i-type" name="task_type">
+          <option>감정평가서</option>
+          <option>등기부등본</option>
+          <option>기본정보</option>
+        </select></div>
+    </div>
+    <div class="field wide"><label for="i-cases">사건번호 (한 줄에 하나)</label>
+      <textarea id="i-cases" name="cases" rows="4" required placeholder="2025타경56881&#10;2025타경56882"></textarea></div>
+    <div class="row">
+      <div class="field"><label for="i-memo">메모 (선택)</label>
+        <input id="i-memo" name="memo" placeholder="지시서에 함께 남길 참고 사항"></div>
+      <button class="btn" type="submit">지시서 발행</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>대기 중인 지시서 <span class="count">{{ instructions|length }}건</span></h2>
+  {% if instructions %}
+  <div class="table-wrap"><table>
+    <tr><th>번호</th><th>수집기</th><th>유형</th><th>사건</th><th>메모</th><th>생성</th></tr>
+    {% for i in instructions %}
+    <tr class="{{ 'new' if loop.first }}">
+      <td class="mono">{{ i.id }}</td>
+      <td><b>{{ i.collector }}</b></td>
+      <td>{{ i.task_type }}</td>
+      <td>{{ i.cases }} <span class="muted">({{ i.count }}건)</span></td>
+      <td class="muted">{{ i.notes }}</td>
+      <td class="muted mono">{{ i.created[:16]|replace('T', ' ') }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty"><b>대기 중인 지시서가 없습니다</b>지시서를 발행하면 수집기가 가져갈 때까지 여기에 보입니다.</div>
+  {% endif %}
+</div>
+{% endblock %}
