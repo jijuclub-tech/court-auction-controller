@@ -87,7 +87,7 @@ def scoped_nas_session(collector, share_root, borrow_approved_key, *,
     try:
         password_text = lease.password.decode("utf-8")
         try:
-            connector.connect(path, lease.username, password_text)
+            connector.connect(str(share_root).rstrip("\\"), lease.username, password_text)
             connected = True
         finally:
             del password_text
@@ -96,7 +96,7 @@ def scoped_nas_session(collector, share_root, borrow_approved_key, *,
     finally:
         try:
             if connected:
-                connector.disconnect(path)
+                connector.disconnect(str(share_root).rstrip("\\"))
         finally:
             lease.wipe()
             audit("nas_lease_closed", collector=collector, lease_id=lease.lease_id)
