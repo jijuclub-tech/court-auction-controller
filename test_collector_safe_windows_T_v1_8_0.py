@@ -74,7 +74,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue(windows.recover(self.journal, backend)["already_unlocked"])
 
     def test_pico_cannot_be_disabled(self):
-        backend = DeviceRecorder(run=lambda *a, **k: self.fail("pnputil must not run"))
+        backend = windows.PnPDeviceControl(run=lambda *a, **k: self.fail("pnputil must not run"))
         with self.assertRaises(ValueError):
             backend.disable("HID\\VID_2E8A&PID_0005")
 
