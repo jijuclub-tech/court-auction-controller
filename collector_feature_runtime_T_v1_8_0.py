@@ -44,11 +44,42 @@ class CollectorFeatureRuntime:
         if not token:
             raise RuntimeError("approved collector upload token unavailable")
         try:
-            return self.queue.flush(
-                self.config.get("approved_controller_url", ""), node, token, limit=5
-            )
+            addresses = self.config.get("approved_controller_urls") or [
+                self.config.get("approved_controller_url", "")
+            ]
+            if not isinstance(addresses, (tuple, list)) or not addresses:
+                raise ValueError("approved controller endpoint list required")
+            last = []
+            for address in addresses:
+                from collector_launch_options_T_v1_8_0 import url_from_policy
+                url_from_policy(address)  # HTTPS and host validation before sending credentials
+                outcome = self.queue.flush(address, node, token, limit=5)
+                last = outcome
+                if not outcome or any(x["status"] == "CONTROLLER_VERIFIED" for x in outcome):
+                    return outcome
+                # Failed LAN receipt remains pending; retry against authorized WAN.
+            return last
         finally:
             del token
+
+    def apply_authenticated_policy(self, policy):
+        """Use only /api/policy returned by a validated registered controller."""
+        if not isinstance(policy, dict):
+            raise ValueError("registered controller policy required")
+        data = policy.get("collector_upload") or {}
+        endpoints = data.get("endpoints") or []
+        if not data.get("enabled") or not isinstance(endpoints, list):
+            return False
+        from collector_launch_options_T_v1_8_0 import url_from_policy
+        approved = []
+        for row in endpoints:
+            if not isinstance(row, dict) or row.get("network") not in ("lan", "wan"):
+                raise ValueError("untrusted controller endpoint")
+            approved.append(url_from_policy(row.get("url", "")))
+        if not approved:
+            return False
+        self.config["approved_controller_urls"] = list(dict.fromkeys(approved))
+        return True
 
     def pico_input_permitted(self):
         """remote_guard pause.flag is a PAUSE, never a reason to discard a job."""
