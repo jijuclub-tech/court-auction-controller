@@ -49,6 +49,7 @@ import site_map_ingest
 import collector_file_ingest_T_v1_8_0 as collector_upload
 import collector_nas_bridge_T_v1_8_1 as collector_nas
 import collector_upload_address_T_v1_8_1 as upload_address
+import collector_wallet_state_T_v1_8_1 as wallet_state
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
 
@@ -569,6 +570,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- manager (admin) API ----
     def _admin_route(self, method, p, q):
+        if p == "/api/admin/wallet/status" and method == "GET":
+            with db() as con:
+                return self._json(200, wallet_state.status(DATA, con))
         if method == "GET" and p == "/api/admin/state":
             with db() as con:
                 return self._json(200, {
