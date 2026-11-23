@@ -47,6 +47,8 @@ import learning
 import performance
 import site_map_ingest
 import collector_file_ingest_T_v1_8_0 as collector_upload
+import collector_nas_bridge_T_v1_8_1 as collector_nas
+import collector_upload_address_T_v1_8_1 as upload_address
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
 
@@ -322,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             with db() as con:
                 if self._collector_ok(con, q.get("name", "")) is None:
                     return self._json(403, {"ok": False, "error": "collector identity and key required"})
-                return self._json(200, kv_get(con, "policy", DEFAULT_POLICY))
+                return self._json(200, upload_address.attach_upload_policy(kv_get(con, "policy", DEFAULT_POLICY)))
         if p.startswith("/api/collector/instruction/") and method == "GET":
             return self._instruction(p.rsplit("/", 1)[1])
         if p == "/api/collector/report" and method == "POST":
@@ -720,6 +722,17 @@ def main():
     a = ap.parse_args()
     init()
     threading.Thread(target=_performance_close_loop, daemon=True, name="performance-close").start()
+    # Fail-closed NAS mirroring only when administrator provides both paths.
+    if (os.environ.get("BIDGUARD_COLLECTOR_UPLOAD_DIR") and
+            os.environ.get("BIDGUARD_COLLECTOR_NAS_MOUNT")):
+        collector_upload._root()  # validate absolute staging directory, never NAS shadow root
+        threading.Thread(target=collector_nas.service_loop, daemon=True,
+                         name="collector-nas-mirror", kwargs={
+                             "db_path": DB_PATH,
+                             "staging_root": Path(os.environ["BIDGUARD_COLLECTOR_UPLOAD_DIR"]),
+                             "nas_mount": Path(os.environ["BIDGUARD_COLLECTOR_NAS_MOUNT"]),
+                             "stop_event": threading.Event(), "interval": 60,
+                         }).start()
     if not ADMIN_TOKEN:
         print("경고: CONTROLLER_ADMIN_TOKEN 이 없어 관리인 화면(/admin)을 쓸 수 없습니다.")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
