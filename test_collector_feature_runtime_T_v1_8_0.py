@@ -49,6 +49,45 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(hx), 64)
         self.assertEqual(len(runtime.queue.pending()), 1)
 
+    def test_controller_policy_lan_wan_addresses(self):
+        runtime = CollectorFeatureRuntime(
+            argv=["/upload"], config=self.config,
+            token_supplier=lambda *_: "x" * 32,
+        )
+        self.assertTrue(runtime.apply_authenticated_policy({
+            "collector_upload": {
+                "enabled": True,
+                "endpoints": [
+                    {"network": "lan", "url": "https://lan.example.test/api/v1/collector/upload"},
+                    {"network": "wan", "url": "https://wan.example.test/api/v1/collector/upload"},
+                ],
+            },
+        }))
+        self.assertEqual(len(runtime.config["approved_controller_urls"]), 2)
+
+    def test_upload_lan_failure_uses_approved_wan(self):
+        runtime = CollectorFeatureRuntime(
+            argv=["/upload"], config=self.config,
+            token_supplier=lambda *_: "x" * 32,
+        )
+        runtime.config["approved_controller_urls"] = [
+            "https://lan.example.test", "https://wan.example.test"
+        ]
+        calls = []
+
+        class MockQueue:
+            def flush(self, url, node, token, limit=5):
+                calls.append((url, node))
+                if "lan." in url:
+                    return [{"status": "PENDING"}]
+                return [{"status": "CONTROLLER_VERIFIED"}]
+
+        runtime.queue = MockQueue()
+        self.assertEqual(runtime.retry_online()[0]["status"], "CONTROLLER_VERIFIED")
+        self.assertEqual([x[0] for x in calls], [
+            "https://lan.example.test", "https://wan.example.test"
+        ])
+
     def test_unlock_does_not_launch_legacy(self):
         runtime = CollectorFeatureRuntime(
             argv=["/unlock"], config=self.config,
