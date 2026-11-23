@@ -128,6 +128,19 @@ class UploadTests(unittest.TestCase):
         self.assertEqual(len(out.pending()), 0)
         self.assertTrue(source.exists())
 
+    def test_queue_releases_sqlite_file_for_windows_cleanup(self):
+        """A temporary SQLite DB must be deletable while queue object is alive."""
+        dbfile = self.root / "windows_cleanup" / "queued.db"
+        out = client.UploadQueue(dbfile)
+        self.assertEqual(out.pending(), [])
+        document = self.root / "windows_cleanup" / "doc.txt"
+        document.write_bytes(b"test-only")
+        out.enqueue(document)
+        self.assertEqual(len(out.pending()), 1)
+        out._state(out.pending()[0]["id"], "PENDING", "synthetic")
+        dbfile.unlink()  # Windows raises WinError 32 if SQLite handle was retained.
+        self.assertFalse(dbfile.exists())
+
     def test_wrong_ack_is_not_accepted(self):
         f = self.root / "blob.txt"
         f.write_text("abc")
