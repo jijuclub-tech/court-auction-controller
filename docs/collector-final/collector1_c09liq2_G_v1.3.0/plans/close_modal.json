@@ -1,0 +1,30 @@
+{
+  "out_root": "C:\\BIDGUARD\\court\\out\\steps",
+  "attach_title": [
+    "법원경매",
+    "법원정보제공",
+    "감정평가서"
+  ],
+  "zip_prefix": "c1steps_",
+  "case_label": "close_modal",
+  "steps": [
+    {
+      "do": "attach"
+    },
+    {
+      "do": "click_text",
+      "name": "modal_close",
+      "text": "닫기",
+      "optional": true,
+      "wait_min": 2,
+      "wait_max": 4
+    },
+    {
+      "do": "key",
+      "combo": "ESC",
+      "name": "esc_close",
+      "wait_min": 2,
+      "wait_max": 3
+    }
+  ]
+}
