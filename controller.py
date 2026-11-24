@@ -295,6 +295,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if collector_dispatch.route(self, method, p, q):  # 2대 수집기 중앙 업무/ACK/중복방지
             return
+        if method == "GET" and p == "/api/deepseek/status":
+            try:
+                from deepseek_wallet_T_v0_1_0 import status
+                current = status()
+            except ImportError:
+                current = {"connected": False, "state": "wallet_unavailable"}
+            return self._json(200, {"connected": current["connected"], "state": current["state"]})
+        if method == "GET" and p == "/api/admin/deepseek/usage":
+            if not self._admin():
+                return self._json(403, {"ok": False})
+            try:
+                from deepseek_wallet_T_v0_1_0 import status
+            except ImportError:
+                return self._json(503, {"connected": False, "state": "wallet_unavailable"})
+            return self._json(200, status())
         if p.startswith("/api/admin/"):
             if not self._admin():
                 return self._json(403, {"ok": False, "error": "admin token"})
