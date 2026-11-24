@@ -1,0 +1,6 @@
+cc81a4b08ba4167dc38fa206351b6245cd4c14869d0aa4c591c163b2d9f393bb  bidguard-hid-pico2-1.0.8-v8-r2-16MB.uf2
+af465f37185b6110caac9148ac920c1a84ac484341f21f5e90ea272c94921dbb  PICO2_INSTALL_1.0.8-v8-r2.zip
+3a2b0c16dbaace4124065251b16c7e8ec85c7ce448da036a6437d02c13d39cbb  firmware/bidguard-hid-pico2/bidguard-hid-pico2.ino
+6fcaa82a47a7e6fd8ea9c1b87197b255e9410c9840782c47cc4befce49f731ca  firmware/bidguard-hid-pico2/human_path.h
+f1712b7fa4642ea95084aa5668275422694434e46f1fe88075c3bc0a6c809f34  installer/Install.ps1
+c557910c01ac5fcd21d1076c618e5f3aff376f27ef726582e0a9c976cc9da00d  installer/INSTALL.bat

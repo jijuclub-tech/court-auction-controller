@@ -1,0 +1,65 @@
+{
+  "out_root": "C:\\BIDGUARD\\court\\out\\steps",
+  "attach_title": [
+    "법원경매",
+    "법원정보제공",
+    "감정평가서"
+  ],
+  "zip_prefix": "c1steps_",
+  "recaptcha_checkbox": true,
+  "notice_close": true,
+  "case_label": "open_only",
+  "steps": [
+    {
+      "do": "attach"
+    },
+    {
+      "do": "drag_text",
+      "name": "move_title",
+      "text": "감정평가서",
+      "region": [
+        500,
+        130,
+        900,
+        200
+      ],
+      "dx": [
+        12,
+        25
+      ],
+      "dy": [
+        5,
+        10
+      ]
+    },
+    {
+      "do": "wait_text",
+      "name": "wait_viewer",
+      "text": "열기",
+      "region": [
+        900,
+        580,
+        1050,
+        670
+      ],
+      "max_s": 60
+    },
+    {
+      "do": "click_text",
+      "name": "open_pdf",
+      "text": "열기",
+      "region": [
+        900,
+        580,
+        1050,
+        670
+      ],
+      "wait_min": 12,
+      "wait_max": 16
+    },
+    {
+      "do": "capture",
+      "name": "after_open"
+    }
+  ]
+}
