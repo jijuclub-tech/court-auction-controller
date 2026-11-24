@@ -46,6 +46,7 @@ from urllib.request import Request, urlopen
 import learning
 import performance
 import site_map_ingest
+import site_kb_T_v0_1 as site_kb
 import collector_dispatch
 import collector_key_wallet_T_v0_2 as device_keys
 
@@ -125,6 +126,7 @@ def init():
         learning.init(con)
         performance.init(con)
         site_map_ingest.init(con, DATA)
+        site_kb.init(con, DATA)
         collector_dispatch.init(con)
         device_keys.init_schema(con)
 
@@ -285,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route(self, method):
         u = urlparse(self.path)
         p, q = u.path.rstrip("/") or "/", {k: v[0] for k, v in parse_qs(u.query).items()}
+        if site_kb.route(self, method, p, q):  # shared site knowledge; legacy routes unchanged
+            return
         if site_map_ingest.route(self, method, p, q):
             return
         if method == "GET" and p == "/api/health":
