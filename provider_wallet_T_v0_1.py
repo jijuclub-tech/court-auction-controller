@@ -8,8 +8,6 @@ import secrets
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from key_wallet import b64, check_private, kdf, open_seal, seal, unb64, write_private
-
 PROVIDERS = {"deepseek", "gemini"}
 AAD = b"BIDGUARD-provider-wallet-v1"
 
@@ -20,6 +18,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def read_wallet(path, password):
+    from key_wallet import check_private, kdf, open_seal, unb64
     try:
         document = json.loads(check_private(path).read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -28,6 +27,7 @@ def read_wallet(path, password):
 
 
 def save_wallet(path, password, keys):
+    from key_wallet import b64, kdf, seal, write_private
     salt = secrets.token_bytes(16)
     write_private(path, {"salt": b64(salt), "sealed": seal(kdf(password, salt), json.dumps(keys).encode(), AAD)})
 
@@ -71,7 +71,7 @@ def route(handler, method, path):
         path = Path(os.environ["BIDGUARD_PROVIDER_WALLET"])
         password = os.environ["BIDGUARD_PROVIDER_WALLET_PASSWORD"]
         key = read_wallet(path, password).get(provider)
-    except Exception:
+    except (Exception, SystemExit):
         key = None
     if not key:
         handler._json(503, {"ok": False, "error": "provider wallet unavailable"})
