@@ -44,6 +44,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 import learning
+import provider_wallet_T_v0_1 as provider_wallet
 import performance
 import site_map_ingest
 import collector_dispatch
@@ -299,6 +300,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._admin():
                 return self._json(403, {"ok": False, "error": "admin token"})
             return self._admin_route(method, p, q)
+        if provider_wallet.route(self, method, p):
+            return
         if p == "/api/bot/asks" and method == "GET":
             if not self._bot():
                 return self._json(403, {"ok": False})
